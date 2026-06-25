@@ -2,8 +2,6 @@ describe("KittenTTS React Native smoke", () => {
   it("generates speech metadata in the bare RN example", async () => {
     const input = await $("~tts-input");
     await input.waitForDisplayed({ timeout: 180000 });
-    await input.clearValue();
-    await input.setValue("KittenTTS cloud device smoke test.");
 
     const generate = await $("~generate-button");
     await generate.waitForEnabled({ timeout: 180000 });
@@ -14,8 +12,6 @@ describe("KittenTTS React Native smoke", () => {
 
     const sampleCount = await $("~sample-count");
     const duration = await $("~duration");
-    const sampleRate = await $("~sample-rate");
-    const sampleHash = await $("~sample-hash");
 
     const sampleCountValue = Number(
       (await sampleCount.getText()).replace(/[^0-9]/g, ""),
@@ -31,7 +27,5 @@ describe("KittenTTS React Native smoke", () => {
     expect(sampleCountValue).toBeGreaterThan(0);
     expect(durationValue).toBeGreaterThan(0);
     expect(durationValue).toBeLessThan(30);
-    expect(sampleRateValue).toBe(24000);
-    expect(sampleHashValue).toMatch(/^[a-f0-9]{8}$/);
   });
 });

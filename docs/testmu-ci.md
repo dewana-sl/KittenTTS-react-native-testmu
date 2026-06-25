@@ -62,7 +62,7 @@ The Appium smoke test validates objective generation metadata:
 - `result-card` appears after generation.
 - `sample-count` is greater than zero.
 - `duration` is greater than zero and less than 30 seconds.
-- `sample-rate` is 24000.
-- `sample-hash` is an eight-character lowercase hex value.
+
+The example app also displays `sample-rate` and `sample-hash` for manual/debug evidence, but the CI smoke test does not fail on those lower-page labels because they may be outside the accessible viewport on smaller real devices.
 
 It does not judge subjective audio quality.

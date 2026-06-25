@@ -10,8 +10,8 @@ Validate objective KittenTTS behavior:
 - `result-card` appears.
 - `sample-count` is greater than zero.
 - `duration` is greater than zero and less than 30 seconds for the smoke sentence.
-- `sample-rate` is 24000 Hz.
-- `sample-hash` is an eight-character lowercase hex value.
+
+The app also exposes `sample-rate` and `sample-hash` as useful manual/debug evidence. Treat them as optional in cloud automation unless they are visible without extra scrolling.
 
 Do not use subjective audio quality as a pass/fail gate. Playback quality should be reviewed manually or in a separate evaluation flow.
 
