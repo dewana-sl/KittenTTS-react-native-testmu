@@ -29,9 +29,15 @@ Set `TESTMU_REAL_DEVICE=false` to use a TestMu virtual device configuration.
 
 ## TestMu GitHub App
 
-Install the TestMu AI Cloud GitHub App on this repository. Then copy `.lambdatest/config.example.yaml` to `.lambdatest/config.yaml` and fill it from the TestMu integration page.
+Install the TestMu AI Cloud GitHub App on this repository. The committed `.lambdatest/config.yaml` contains the project, folder, and assignee values from the app setup screen.
 
-`.lambdatest/config.yaml` is intentionally gitignored because the values are account/project specific. The committed `.lambdatest/agent.md` gives KaneAI the app-specific smoke-test rules and automation IDs.
+Before KaneAI can run, replace this placeholder with the real Test Run configuration value from LambdaTest:
+
+```yaml
+configuration_id: "your_test_run_configuration_id"
+```
+
+The committed `.lambdatest/agent.md` gives KaneAI the app-specific smoke-test rules and automation IDs.
 
 Trigger KaneAI/TestMu on a PR with:
 
