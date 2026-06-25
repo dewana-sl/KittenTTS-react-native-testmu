@@ -19,10 +19,6 @@ describe("KittenTTS React Native smoke", () => {
     const durationValue = Number.parseFloat(
       (await duration.getText()).replace(/[^0-9.]/g, ""),
     );
-    const sampleRateValue = Number(
-      (await sampleRate.getText()).replace(/[^0-9]/g, ""),
-    );
-    const sampleHashValue = await sampleHash.getText();
 
     expect(sampleCountValue).toBeGreaterThan(0);
     expect(durationValue).toBeGreaterThan(0);
