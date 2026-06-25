@@ -25,7 +25,7 @@ jobs:
       - run: npm test
 
   android-example:
-    name: Bare RN Android debug APK
+    name: Bare RN Android release APK
     runs-on: ubuntu-latest
 
     steps:
@@ -46,13 +46,13 @@ jobs:
       - run: npm ci
         working-directory: examples/BareRNExample
 
-      - run: ./gradlew assembleDebug
+      - run: ./gradlew assembleRelease
         working-directory: examples/BareRNExample/android
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bare-rn-debug-apk
-          path: examples/BareRNExample/android/app/build/outputs/apk/debug/app-debug.apk
+          name: bare-rn-release-apk
+          path: examples/BareRNExample/android/app/build/outputs/apk/release/app-release.apk
 
   testmu-android-smoke:
     name: TestMu Android smoke
@@ -83,7 +83,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: steps.testmu-creds.outputs.present == 'true'
         with:
-          name: bare-rn-debug-apk
+          name: bare-rn-release-apk
           path: artifacts/android
 
       - id: upload-app
@@ -95,8 +95,8 @@ jobs:
         run: |
           response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
             --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
-            --form "name=KittenTTS_RN_Debug_${GITHUB_RUN_ID}" \
-            --form "appFile=@artifacts/android/app-debug.apk")"
+            --form "name=KittenTTS_RN_Release_${GITHUB_RUN_ID}" \
+            --form "appFile=@artifacts/android/app-release.apk")"
 
           app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
           const response = JSON.parse(process.env.UPLOAD_RESPONSE);

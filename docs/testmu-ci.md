@@ -5,7 +5,7 @@ This repo has a first-pass TestMu smoke setup for the React Native bare example.
 The workflow lives in `.github/workflows/rn-ci.yml` and does three things:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
-2. Builds `examples/BareRNExample` as a debug Android APK.
+2. Builds `examples/BareRNExample` as a release Android APK.
 3. Uploads the APK to TestMu and runs `e2e/appium/specs/kittentts-smoke.android.spec.js` when TestMu credentials are configured.
 
 ## Required GitHub Secrets
@@ -16,6 +16,8 @@ Add these in GitHub under `Settings -> Secrets and variables -> Actions`:
 - `LT_ACCESS_KEY`
 
 Without these secrets, the TestMu job prints a skip message and exits successfully after the APK build.
+
+The cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
 ## Optional GitHub Variables
 
