@@ -1,0 +1,128 @@
+name: RN CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - add-testmu-rn-ci
+  workflow_dispatch:
+
+jobs:
+  sdk:
+    name: SDK typecheck and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  android-example:
+    name: Bare RN Android debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+        working-directory: examples/BareRNExample
+
+      - run: ./gradlew assembleDebug
+        working-directory: examples/BareRNExample/android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bare-rn-debug-apk
+          path: examples/BareRNExample/android/app/build/outputs/apk/debug/app-debug.apk
+
+  testmu-android-smoke:
+    name: TestMu Android smoke
+    runs-on: ubuntu-latest
+    needs: android-example
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: testmu-creds
+        name: Check TestMu credentials
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          if [ -n "$LT_USERNAME" ] && [ -n "$LT_ACCESS_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping TestMu smoke because LT_USERNAME or LT_ACCESS_KEY is not configured."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.testmu-creds.outputs.present == 'true'
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        if: steps.testmu-creds.outputs.present == 'true'
+        with:
+          name: bare-rn-debug-apk
+          path: artifacts/android
+
+      - id: upload-app
+        name: Upload APK to TestMu
+        if: steps.testmu-creds.outputs.present == 'true'
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS_RN_Debug_${GITHUB_RUN_ID}" \
+            --form "appFile=@artifacts/android/app-debug.apk")"
+
+          app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.UPLOAD_RESPONSE);
+          const appUrl = response.app_url || response.appUrl || response.app || response.url;
+          if (!appUrl || !String(appUrl).startsWith('lt://')) {
+            throw new Error(`Unable to find lt:// app URL in response: ${JSON.stringify(response)}`);
+          }
+          process.stdout.write(appUrl);
+          NODE
+          )"
+
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+      - name: Install Appium harness
+        if: steps.testmu-creds.outputs.present == 'true'
+        run: npm ci
+        working-directory: e2e/appium
+
+      - name: Run TestMu Android smoke
+        if: steps.testmu-creds.outputs.present == 'true'
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_APP_URL: ${{ steps.upload-app.outputs.app_url }}
+          TESTMU_ANDROID_DEVICE: ${{ vars.TESTMU_ANDROID_DEVICE || 'Galaxy S21' }}
+          TESTMU_ANDROID_VERSION: ${{ vars.TESTMU_ANDROID_VERSION || '12' }}
+          TESTMU_REAL_DEVICE: ${{ vars.TESTMU_REAL_DEVICE || 'true' }}
+        run: npm run test:android
+        working-directory: e2e/appium

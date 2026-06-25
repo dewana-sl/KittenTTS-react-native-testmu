@@ -58,43 +58,43 @@ export default function App() {
     state.kind === 'generating' ||
     state.kind === 'playing';
 
-  const initTTS = useCallback(
-    async (model: KittenModel) => {
-      try {
-        await ttsRef.current?.dispose();
-        setState({kind: 'preparing'});
-        setResult(null);
+  const initTTS = useCallback(async (model: KittenModel) => {
+    try {
+      await ttsRef.current?.dispose();
+      setState({kind: 'preparing'});
+      setResult(null);
 
-        const instance = await KittenTTS.create(
-          {model, player: createRNSoundPlayer(Sound)},
-          (progress, info) => {
-            if (mountedRef.current && info?.stage === 'downloading') {
-              setState({
-                kind: 'downloading',
-                progress,
-              });
-            }
-          },
-        );
+      const instance = await KittenTTS.create(
+        {model, player: createRNSoundPlayer(Sound)},
+        (progress, info) => {
+          if (mountedRef.current && info?.stage === 'downloading') {
+            setState({
+              kind: 'downloading',
+              progress,
+            });
+          }
+        },
+      );
 
-        if (!mountedRef.current) {
-          if (!__DEV__) await instance.dispose();
-          return;
-        }
-
-        ttsRef.current = instance;
-        setTts(instance);
-        setState({kind: 'idle'});
-      } catch (error: unknown) {
-        ttsRef.current = null;
-        if (mountedRef.current) {
-          setTts(null);
-          setState({kind: 'error', message: getErrorMessage(error, 'Init failed')});
-        }
+      if (!mountedRef.current) {
+        if (!__DEV__) await instance.dispose();
+        return;
       }
-    },
-    [],
-  );
+
+      ttsRef.current = instance;
+      setTts(instance);
+      setState({kind: 'idle'});
+    } catch (error: unknown) {
+      ttsRef.current = null;
+      if (mountedRef.current) {
+        setTts(null);
+        setState({
+          kind: 'error',
+          message: getErrorMessage(error, 'Init failed'),
+        });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -121,7 +121,10 @@ export default function App() {
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({kind: 'error', message: getErrorMessage(error, 'Generation failed')});
+      setState({
+        kind: 'error',
+        message: getErrorMessage(error, 'Generation failed'),
+      });
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
 
@@ -135,7 +138,10 @@ export default function App() {
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({kind: 'error', message: getErrorMessage(error, 'Playback failed')});
+      setState({
+        kind: 'error',
+        message: getErrorMessage(error, 'Playback failed'),
+      });
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
 
@@ -159,6 +165,8 @@ export default function App() {
         <View style={styles.section}>
           <Text style={styles.label}>Text</Text>
           <TextInput
+            testID="tts-input"
+            accessibilityLabel="tts-input"
             style={styles.textInput}
             value={inputText}
             onChangeText={setInputText}
@@ -248,6 +256,8 @@ export default function App() {
         {/* Action Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
+            testID="generate-button"
+            accessibilityLabel="generate-button"
             style={[
               styles.button,
               styles.buttonPrimary,
@@ -259,6 +269,8 @@ export default function App() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="speak-button"
+            accessibilityLabel="speak-button"
             style={[
               styles.button,
               styles.buttonSecondary,
@@ -287,38 +299,76 @@ function StatusBanner({state}: {state: AppState}) {
       return null;
     case 'preparing':
       return (
-        <View style={styles.banner}>
+        <View
+          style={styles.banner}
+          testID="status-banner"
+          accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Preparing model...</Text>
+          <Text
+            style={styles.bannerText}
+            testID="status-label"
+            accessibilityLabel="status-label">
+            Preparing model...
+          </Text>
         </View>
       );
     case 'downloading':
       return (
-        <View style={styles.banner}>
+        <View
+          style={styles.banner}
+          testID="status-banner"
+          accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>
+          <Text
+            style={styles.bannerText}
+            testID="status-label"
+            accessibilityLabel="status-label">
             Downloading model... {Math.round(state.progress * 100)}%
           </Text>
         </View>
       );
     case 'generating':
       return (
-        <View style={styles.banner}>
+        <View
+          style={styles.banner}
+          testID="status-banner"
+          accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Generating speech...</Text>
+          <Text
+            style={styles.bannerText}
+            testID="status-label"
+            accessibilityLabel="status-label">
+            Generating speech...
+          </Text>
         </View>
       );
     case 'playing':
       return (
-        <View style={styles.banner}>
+        <View
+          style={styles.banner}
+          testID="status-banner"
+          accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text style={styles.bannerText}>Playing...</Text>
+          <Text
+            style={styles.bannerText}
+            testID="status-label"
+            accessibilityLabel="status-label">
+            Playing...
+          </Text>
         </View>
       );
     case 'error':
       return (
-        <View style={[styles.banner, styles.bannerError]}>
-          <Text style={styles.bannerErrorText}>{state.message}</Text>
+        <View
+          style={[styles.banner, styles.bannerError]}
+          testID="error-banner"
+          accessibilityLabel="error-banner">
+          <Text
+            style={styles.bannerErrorText}
+            testID="error-message"
+            accessibilityLabel="error-message">
+            {state.message}
+          </Text>
         </View>
       );
   }
@@ -326,32 +376,70 @@ function StatusBanner({state}: {state: AppState}) {
 
 function ResultCard({result}: {result: KittenTTSResult}) {
   return (
-    <View style={styles.resultCard}>
+    <View
+      style={styles.resultCard}
+      testID="result-card"
+      accessibilityLabel="result-card">
       <Text style={styles.resultTitle}>Generated Audio</Text>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Voice</Text>
-        <Text style={styles.resultValue}>
-          {voiceDisplayName(result.voice)}
-        </Text>
+        <Text style={styles.resultValue}>{voiceDisplayName(result.voice)}</Text>
       </View>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Duration</Text>
-        <Text style={styles.resultValue}>{result.duration.toFixed(2)}s</Text>
+        <Text
+          style={styles.resultValue}
+          testID="duration"
+          accessibilityLabel="duration">
+          {result.duration.toFixed(2)}s
+        </Text>
       </View>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Samples</Text>
-        <Text style={styles.resultValue}>
+        <Text
+          style={styles.resultValue}
+          testID="sample-count"
+          accessibilityLabel="sample-count">
           {result.samples.length.toLocaleString()}
         </Text>
       </View>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Sample Rate</Text>
-        <Text style={styles.resultValue}>
+        <Text
+          style={styles.resultValue}
+          testID="sample-rate"
+          accessibilityLabel="sample-rate">
           {result.sampleRate.toLocaleString()} Hz
+        </Text>
+      </View>
+      <View style={styles.resultRow}>
+        <Text style={styles.resultLabel}>Sample Hash</Text>
+        <Text
+          style={styles.resultValue}
+          testID="sample-hash"
+          accessibilityLabel="sample-hash">
+          {computeSampleHash(result.samples)}
         </Text>
       </View>
     </View>
   );
+}
+
+function computeSampleHash(samples: ArrayLike<number>): string {
+  let hash = 2166136261;
+
+  for (let index = 0; index < samples.length; index += 1) {
+    const pcm16 = Math.max(
+      -32768,
+      Math.min(32767, Math.round(samples[index] * 32767)),
+    );
+    hash ^= pcm16 & 0xff;
+    hash = Math.imul(hash, 16777619);
+    hash ^= (pcm16 >> 8) & 0xff;
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 const styles = StyleSheet.create({

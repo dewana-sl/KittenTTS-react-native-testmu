@@ -1,0 +1,8 @@
+# Copy this file to .lambdatest/config.yaml after installing the TestMu AI
+# Cloud GitHub App and copying values from the TestMu integration page.
+project_id: "your_project_id"
+folder_id: "your_folder_id"
+assignee: your_user_id
+configuration_id: "your_configuration_id"
+test_url: "https://github.com/dewana-sl/KittenTTS-react-native-testmu"
+# tunnel_name: "your_tunnel_name"
