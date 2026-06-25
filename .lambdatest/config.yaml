@@ -6,7 +6,8 @@ folder_id: "01KW07MA4T7KSG6ES7BWFCFV1Z"
 
 # Test Run configuration
 assignee: 3339933
-configuration_id: "Android_Android 12___Pixel 5"
+# Replace this with the numeric ID for "Android_Android 12___Pixel 5".
+configuration_id: 0
 
 # Test URL for automation
 # test_url: "https://demo.lambdatestinternal.com"
