@@ -85,6 +85,43 @@ jobs:
           name: bare-rn-release-apk
           path: artifacts/android
 
+      - name: Prune old TestMu CI uploads
+        if: steps.testmu-creds.outputs.present == 'true'
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request GET "https://manual-api.lambdatest.com/app/data?type=android&level=user")"
+
+          app_ids="$(APP_DATA="$response" node - <<'NODE'
+          const keepNames = new Set(["KittenTTS_RN_Release_28200662906"]);
+          const response = JSON.parse(process.env.APP_DATA || "{}");
+          const apps = Array.isArray(response.data) ? response.data : [];
+          const ids = apps
+            .filter((app) => {
+              const name = String(app.name || "");
+              return (
+                name.startsWith("KittenTTS_RN_CI_") ||
+                (name.startsWith("KittenTTS_RN_Release_") && !keepNames.has(name))
+              );
+            })
+            .map((app) => app.app_id || app.appId || app.id)
+            .filter(Boolean);
+          process.stdout.write(ids.join(","));
+          NODE
+          )"
+
+          if [ -n "$app_ids" ]; then
+            curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+              --location --request DELETE "https://manual-api.lambdatest.com/app/delete" \
+              --header "Content-Type: application/json" \
+              --data-raw "{\"appIds\":\"$app_ids\"}"
+            echo
+          else
+            echo "No old TestMu CI uploads to prune."
+          fi
+
       - id: upload-app
         name: Upload APK to TestMu
         if: steps.testmu-creds.outputs.present == 'true'
@@ -94,7 +131,7 @@ jobs:
         run: |
           response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
             --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
-            --form "name=KittenTTS_RN_Release_${GITHUB_RUN_ID}" \
+            --form "name=KittenTTS_RN_CI_${GITHUB_RUN_ID}" \
             --form "appFile=@artifacts/android/app-release.apk")"
 
           app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
