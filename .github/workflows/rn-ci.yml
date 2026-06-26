@@ -121,7 +121,7 @@ jobs:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
           TESTMU_APP_URL: ${{ steps.upload-app.outputs.app_url }}
-          TESTMU_ANDROID_DEVICE: ${{ vars.TESTMU_ANDROID_DEVICE || 'Galaxy S21' }}
+          TESTMU_ANDROID_DEVICE: ${{ vars.TESTMU_ANDROID_DEVICE || 'Pixel 5' }}
           TESTMU_ANDROID_VERSION: ${{ vars.TESTMU_ANDROID_VERSION || '12' }}
           TESTMU_REAL_DEVICE: ${{ vars.TESTMU_REAL_DEVICE || 'true' }}
         run: npm run test:android
