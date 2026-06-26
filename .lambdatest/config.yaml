@@ -8,8 +8,9 @@ folder_id: "01KW07MA4T7KSG6ES7BWFCFV1Z"
 assignee: 3339933
 configuration_id: 314439
 
-# Test URL for automation
-# test_url: "https://demo.lambdatestinternal.com"
+# KaneAI GitHub App requires a URL even for this native mobile app config.
+# The actual app under test is selected by configuration_id.
+test_url: "https://github.com/dewana-sl/KittenTTS-react-native-testmu/pull/1"
 
 # Tunnel configuration (optional)
 # tunnel_name: "your_tunnel_name"
