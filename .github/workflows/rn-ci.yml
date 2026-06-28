@@ -176,9 +176,9 @@ jobs:
           - slug: galaxy-s21
             device: Galaxy S21
             version: "12"
-          - slug: pixel-6
-            device: Pixel 6
-            version: "12"
+          - slug: xiaomi-redmi-note-8
+            device: Xiaomi Redmi Note 8
+            version: "10"
 
     steps:
       - uses: actions/checkout@v4

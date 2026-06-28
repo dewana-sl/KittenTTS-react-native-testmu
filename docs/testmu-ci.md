@@ -35,7 +35,7 @@ The workflow currently runs these devices sequentially with `max-parallel: 1`:
 | Galaxy Note10       | Android 12 |
 | Galaxy S22 Ultra 5G | Android 12 |
 | Galaxy S21          | Android 12 |
-| Pixel 6             | Android 12 |
+| Xiaomi Redmi Note 8 | Android 10 |
 
 Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
 
