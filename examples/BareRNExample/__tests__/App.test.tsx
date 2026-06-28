@@ -11,6 +11,7 @@ import {it, jest} from '@jest/globals';
 jest.mock('react-native-sound', () => jest.fn());
 
 jest.mock('@kittentts/react-native', () => {
+  const create = jest.fn() as any;
   const KittenModel = {
     Nano: 'nano',
     NanoInt8: 'nano-int8',
@@ -22,13 +23,15 @@ jest.mock('@kittentts/react-native', () => {
     Nova: 'nova',
   };
 
+  create.mockResolvedValue({
+    dispose: jest.fn(async () => undefined),
+    generate: jest.fn(),
+    speak: jest.fn(),
+  });
+
   return {
     KittenTTS: {
-      create: jest.fn().mockResolvedValue({
-        dispose: jest.fn().mockResolvedValue(undefined),
-        generate: jest.fn(),
-        speak: jest.fn(),
-      }),
+      create,
     },
     KittenModel,
     KittenVoice,

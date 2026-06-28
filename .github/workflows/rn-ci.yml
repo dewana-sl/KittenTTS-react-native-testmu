@@ -7,6 +7,11 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
 jobs:
   sdk:
     name: SDK typecheck and tests
@@ -53,10 +58,13 @@ jobs:
           name: bare-rn-release-apk
           path: examples/BareRNExample/android/app/build/outputs/apk/release/app-release.apk
 
-  testmu-android-smoke:
-    name: TestMu Android smoke
+  upload-testmu-app:
+    name: Upload APK to TestMu
     runs-on: ubuntu-latest
     needs: android-example
+    outputs:
+      enabled: ${{ steps.testmu-creds.outputs.present }}
+      app_url: ${{ steps.upload-app.outputs.app_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -146,19 +154,125 @@ jobs:
 
           echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
 
+  testmu-android-benchmark:
+    name: TestMu Android benchmark (${{ matrix.device }})
+    runs-on: ubuntu-latest
+    needs: upload-testmu-app
+    if: needs.upload-testmu-app.outputs.enabled == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - slug: pixel-5
+            device: Pixel 5
+            version: "12"
+          - slug: galaxy-note10
+            device: Galaxy Note10
+            version: "12"
+          - slug: galaxy-s22-ultra-5g
+            device: Galaxy S22 Ultra 5G
+            version: "12"
+          - slug: galaxy-s21
+            device: Galaxy S21
+            version: "12"
+          - slug: pixel-6
+            device: Pixel 6
+            version: "12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install Appium harness
-        if: steps.testmu-creds.outputs.present == 'true'
         run: npm ci
         working-directory: e2e/appium
 
-      - name: Run TestMu Android smoke
-        if: steps.testmu-creds.outputs.present == 'true'
+      - name: Run TestMu Android benchmark
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_APP_URL: ${{ steps.upload-app.outputs.app_url }}
-          TESTMU_ANDROID_DEVICE: ${{ vars.TESTMU_ANDROID_DEVICE || 'Pixel 5' }}
-          TESTMU_ANDROID_VERSION: ${{ vars.TESTMU_ANDROID_VERSION || '12' }}
-          TESTMU_REAL_DEVICE: ${{ vars.TESTMU_REAL_DEVICE || 'true' }}
+          TESTMU_APP_URL: ${{ needs.upload-testmu-app.outputs.app_url }}
+          TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
+          TESTMU_ANDROID_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: npm run test:android
         working-directory: e2e/appium
+
+      - name: Upload device benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-${{ matrix.slug }}
+          path: e2e/appium/reports/*.json
+          if-no-files-found: warn
+
+  testmu-benchmark-report:
+    name: TestMu benchmark report
+    runs-on: ubuntu-latest
+    needs:
+      - upload-testmu-app
+      - testmu-android-benchmark
+    if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: testmu-benchmark-*
+          path: benchmark-results
+          merge-multiple: true
+
+      - name: Build benchmark report
+        run: node e2e/appium/scripts/build-benchmark-report.js benchmark-results benchmark-report
+
+      - name: Upload combined benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-report
+          path: benchmark-report/*
+
+      - name: Add report to job summary
+        run: cat benchmark-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment benchmark report on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const marker = '<!-- kittentts-testmu-benchmark-report -->';
+            const body = fs.readFileSync('benchmark-report/pr-comment.md', 'utf8');
+            const {owner, repo} = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const previous = comments.data.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker),
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }

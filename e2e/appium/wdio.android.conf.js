@@ -2,7 +2,7 @@ const appUrl = process.env.TESTMU_APP_URL;
 
 if (!appUrl) {
   throw new Error(
-    "TESTMU_APP_URL must be set to the lt:// app URL returned by TestMu.",
+    "TESTMU_APP_URL must be set to the lt:// app URL returned by TestMu."
   );
 }
 
@@ -14,23 +14,25 @@ exports.config = {
   port: 80,
   path: "/wd/hub",
 
-  specs: ["./specs/kittentts-smoke.android.spec.js"],
+  specs: ["./specs/kittentts-benchmark.android.spec.js"],
   exclude: [],
   maxInstances: 1,
 
   capabilities: [
     {
       platformName: "Android",
-      "appium:deviceName": process.env.TESTMU_ANDROID_DEVICE || "Galaxy S21",
+      "appium:deviceName": process.env.TESTMU_ANDROID_DEVICE || "Pixel 5",
       "appium:platformVersion": process.env.TESTMU_ANDROID_VERSION || "12",
       "appium:app": appUrl,
       "appium:autoGrantPermissions": true,
-      "appium:newCommandTimeout": 240,
+      "appium:newCommandTimeout": 900,
       "lt:options": {
         build: process.env.GITHUB_RUN_ID
           ? `KittenTTS RN ${process.env.GITHUB_RUN_ID}`
           : "KittenTTS RN local",
-        name: "BareRNExample Android smoke",
+        name: `BareRNExample Android benchmark - ${
+          process.env.TESTMU_ANDROID_DEVICE || "Pixel 5"
+        }`,
         project: "KittenTTS React Native",
         isRealMobile: process.env.TESTMU_REAL_DEVICE !== "false",
         console: true,
@@ -43,14 +45,14 @@ exports.config = {
 
   logLevel: "info",
   bail: 0,
-  waitforTimeout: 30000,
-  connectionRetryTimeout: 180000,
+  waitforTimeout: 60000,
+  connectionRetryTimeout: 300000,
   connectionRetryCount: 2,
 
   framework: "mocha",
   reporters: ["spec"],
   mochaOpts: {
     ui: "bdd",
-    timeout: 300000,
+    timeout: 1800000,
   },
 };

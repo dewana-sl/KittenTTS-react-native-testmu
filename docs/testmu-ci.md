@@ -1,12 +1,18 @@
-# TestMu Android CI
+# TestMu Android Benchmark CI
 
-This repo has a first-pass TestMu smoke setup for the React Native bare example.
+This repository uses GitHub Actions plus LambdaTest/TestMu App Automation for a deterministic Android benchmark of `examples/BareRNExample`.
 
-The workflow lives in `.github/workflows/rn-ci.yml` and does three things:
+The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
 2. Builds `examples/BareRNExample` as a release Android APK.
-3. Uploads the APK to TestMu and runs `e2e/appium/specs/kittentts-smoke.android.spec.js` when TestMu credentials are configured.
+3. Uploads the APK once to LambdaTest/TestMu.
+4. Runs the same Appium benchmark on five Android real-device configs one after another.
+5. Collects one JSON result per device.
+6. Builds Markdown, CSV, and JSON summary reports.
+7. Posts or updates the benchmark table as a PR comment.
+
+KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
 ## Required GitHub Secrets
 
@@ -15,54 +21,70 @@ Add these in GitHub under `Settings -> Secrets and variables -> Actions`:
 - `LT_USERNAME`
 - `LT_ACCESS_KEY`
 
-Without these secrets, the TestMu job prints a skip message and exits successfully after the APK build.
+Without these secrets, the TestMu upload job prints a skip message and exits successfully after the APK build.
 
 The cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
+## Device Matrix
+
+The workflow currently runs these devices sequentially with `max-parallel: 1`:
+
+| Device              | OS         |
+| ------------------- | ---------- |
+| Pixel 5             | Android 12 |
+| Galaxy Note10       | Android 12 |
+| Galaxy S22 Ultra 5G | Android 12 |
+| Galaxy S21          | Android 12 |
+| Pixel 6             | Android 12 |
+
+Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
+
 ## Optional GitHub Variables
 
-Add these under `Settings -> Secrets and variables -> Actions -> Variables` if you want to override the default cloud device:
+Add this under `Settings -> Secrets and variables -> Actions -> Variables` if you want a different benchmark sentence:
 
-- `TESTMU_ANDROID_DEVICE`, default `Galaxy S21`
-- `TESTMU_ANDROID_VERSION`, default `12`
-- `TESTMU_REAL_DEVICE`, default `true`
+- `TESTMU_SAMPLE_TEXT`
 
-Set `TESTMU_REAL_DEVICE=false` to use a TestMu virtual device configuration.
-
-## TestMu GitHub App
-
-Install the TestMu AI Cloud GitHub App on this repository. The committed `.lambdatest/config.yaml` contains the project, folder, and assignee values from the app setup screen.
-
-Before KaneAI can run, replace this placeholder with the real Test Run configuration value from LambdaTest:
-
-```yaml
-configuration_id: "your_test_run_configuration_id"
-```
-
-The committed `.lambdatest/agent.md` gives KaneAI the app-specific smoke-test rules and automation IDs.
-
-Trigger KaneAI/TestMu on a PR with:
+Default sample text:
 
 ```text
-@TestMuAI Validate this PR
+Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.
 ```
 
-or:
+The report records the exact sample text and character length so results from different runs can be compared honestly.
 
-```text
-@KaneAI Validate this PR
-```
+## Benchmark Criteria
 
-## Smoke Criteria
-
-The Appium smoke test validates objective generation metadata:
+The Appium test in `e2e/appium/specs/kittentts-benchmark.android.spec.js` validates objective generation metadata:
 
 - `tts-input` is visible.
-- `generate-button` is enabled.
-- `result-card` appears after generation.
-- `sample-count` is greater than zero.
-- `duration` is greater than zero and less than 30 seconds.
+- `benchmark-button` is enabled.
+- `benchmark-report` appears after all models finish.
+- Every bundled model has one result row: `nano`, `nano-int8`, `micro`, and `mini`.
+- `generationMs`, audio duration, RTF, and sample count are greater than zero.
+- `sampleRate` is `24000`.
+- `sampleHash` is an 8-character hex value.
 
-The example app also displays `sample-rate` and `sample-hash` for manual/debug evidence, but the CI smoke test does not fail on those lower-page labels because they may be outside the accessible viewport on smaller real devices.
+The test does not judge subjective audio quality.
 
-It does not judge subjective audio quality.
+## Reports
+
+Each device job uploads a JSON artifact named like:
+
+```text
+testmu-benchmark-pixel-5
+```
+
+The final report job combines those files into:
+
+- `benchmark-report/summary.md`
+- `benchmark-report/summary.csv`
+- `benchmark-report/summary.json`
+- `benchmark-report/pr-comment.md`
+
+`summary.md` and the PR comment include common run details plus one table per device:
+
+| Model | Generation time (s) | Audio duration (s) | RTF | Samples | Sample rate | Sample hash |
+| ----- | ------------------: | -----------------: | --: | ------: | ----------: | ----------- |
+
+The PR comment is updated in place using a hidden marker, so repeated workflow runs do not spam the pull request.
