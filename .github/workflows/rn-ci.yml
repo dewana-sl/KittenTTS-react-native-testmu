@@ -192,6 +192,7 @@ jobs:
         working-directory: e2e/appium
 
       - name: Run TestMu Android benchmark
+        id: run-benchmark
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -202,6 +203,55 @@ jobs:
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: npm run test:android
         working-directory: e2e/appium
+
+      - name: Write device failure report
+        if: failure() && steps.run-benchmark.outcome == 'failure'
+        env:
+          TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
+          TESTMU_ANDROID_VERSION: ${{ matrix.version }}
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          mkdir -p e2e/appium/reports
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const slug = String(process.env.TESTMU_ANDROID_DEVICE || 'device')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-|-$/g, '');
+          const report = {
+            schemaVersion: 1,
+            status: 'failed',
+            failedStage: 'Run TestMu Android benchmark',
+            errorSummary: 'The Appium benchmark step failed before a benchmark JSON report was produced.',
+            errorDetails: [
+              `Device: ${process.env.TESTMU_ANDROID_DEVICE}`,
+              `Android version: ${process.env.TESTMU_ANDROID_VERSION}`,
+              `Workflow run: ${process.env.GITHUB_RUN_URL}`,
+              'Open the device job logs for the exact Appium/LambdaTest error.',
+            ].join('\n'),
+            device: process.env.TESTMU_ANDROID_DEVICE,
+            platformName: 'Android',
+            platformVersion: process.env.TESTMU_ANDROID_VERSION,
+            realDevice: true,
+            sessionId: null,
+            githubRunId: process.env.GITHUB_RUN_ID || null,
+            githubSha: process.env.GITHUB_SHA || null,
+            capturedAt: new Date().toISOString(),
+            sampleText: process.env.TESTMU_SAMPLE_TEXT || null,
+            characterLength: process.env.TESTMU_SAMPLE_TEXT
+              ? Array.from(process.env.TESTMU_SAMPLE_TEXT).length
+              : null,
+            rows: [],
+          };
+
+          fs.writeFileSync(
+            path.join('e2e/appium/reports', `${slug}.json`),
+            `${JSON.stringify(report, null, 2)}\n`,
+          );
+          NODE
 
       - name: Upload device benchmark report
         if: always()

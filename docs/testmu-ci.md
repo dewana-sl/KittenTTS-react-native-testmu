@@ -88,3 +88,5 @@ The final report job combines those files into:
 | ----- | ------------------: | -----------------: | --: | ------: | ----------: | ----------- |
 
 The PR comment is updated in place using a hidden marker, so repeated workflow runs do not spam the pull request.
+
+If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, failed stage, summary, workflow link, and the instruction to open that specific device job log for the exact LambdaTest/Appium error.

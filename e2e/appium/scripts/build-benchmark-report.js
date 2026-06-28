@@ -50,6 +50,20 @@ function escapeCsv(value) {
 }
 
 function buildDeviceTable(report) {
+  if (report.status === "failed") {
+    return [
+      `### ${escapeMarkdown(report.device)} (${escapeMarkdown(
+        report.platformName
+      )} ${escapeMarkdown(report.platformVersion)})`,
+      "",
+      "| Status | Failed stage | What happened | Details |",
+      "| --- | --- | --- | --- |",
+      `| Failed | ${escapeMarkdown(report.failedStage)} | ${escapeMarkdown(
+        report.errorSummary
+      )} | ${escapeMarkdown(report.errorDetails)} |`,
+    ].join("\n");
+  }
+
   const lines = [
     `### ${escapeMarkdown(report.device)} (${escapeMarkdown(
       report.platformName
@@ -84,7 +98,12 @@ function buildSummary(reports) {
     ].join("\n");
   }
 
-  const first = reports[0];
+  const completedReports = reports.filter(
+    (report) => report.status !== "failed"
+  );
+  const failedReports = reports.filter((report) => report.status === "failed");
+  const first = reports.find((report) => report.sampleText) || reports[0];
+  const firstPassed = completedReports[0] || first;
   const lines = [
     "# KittenTTS TestMu Benchmark Report",
     "",
@@ -92,9 +111,14 @@ function buildSummary(reports) {
     "",
     `- Sample text: ${escapeMarkdown(first.sampleText)}`,
     `- Character length: ${first.characterLength}`,
-    `- Voice: ${escapeMarkdown(first.voiceDisplayName || first.voice)}`,
-    `- Speed: ${first.speed}x`,
-    `- Devices completed: ${reports.length}`,
+    `- Voice: ${escapeMarkdown(
+      firstPassed.voiceDisplayName || firstPassed.voice || "unavailable"
+    )}`,
+    `- Speed: ${
+      firstPassed.speed === undefined ? "unavailable" : `${firstPassed.speed}x`
+    }`,
+    `- Devices completed: ${completedReports.length}`,
+    `- Devices failed: ${failedReports.length}`,
     `- GitHub run: ${
       process.env.GITHUB_RUN_ID || first.githubRunId || "local"
     }`,
@@ -127,10 +151,44 @@ function buildCsv(reports) {
     "sampleCount",
     "sampleRate",
     "sampleHash",
+    "status",
+    "failedStage",
+    "errorSummary",
+    "errorDetails",
   ];
   const lines = [header.join(",")];
 
   for (const report of reports) {
+    if (report.status === "failed") {
+      lines.push(
+        [
+          report.device,
+          report.platformName,
+          report.platformVersion,
+          report.sampleText,
+          report.characterLength,
+          report.voiceDisplayName || report.voice,
+          report.speed,
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          report.status,
+          report.failedStage,
+          report.errorSummary,
+          report.errorDetails,
+        ]
+          .map(escapeCsv)
+          .join(",")
+      );
+      continue;
+    }
+
     for (const row of report.rows || []) {
       lines.push(
         [
@@ -150,6 +208,10 @@ function buildCsv(reports) {
           row.sampleCount,
           row.sampleRate,
           row.sampleHash,
+          "passed",
+          "",
+          "",
+          "",
         ]
           .map(escapeCsv)
           .join(",")
