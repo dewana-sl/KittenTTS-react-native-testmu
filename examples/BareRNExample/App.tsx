@@ -358,6 +358,7 @@ export default function App() {
         <Text style={styles.subtitle}>On-Device Text-to-Speech</Text>
 
         <StatusBanner state={state} />
+        {benchmarkReport && <BenchmarkReportCard report={benchmarkReport} />}
 
         {/* Text Input */}
         <View style={styles.section}>
@@ -495,7 +496,6 @@ export default function App() {
 
         {/* Result Card */}
         {result && <ResultCard result={result} />}
-        {benchmarkReport && <BenchmarkReportCard report={benchmarkReport} />}
       </ScrollView>
     </SafeAreaView>
   );

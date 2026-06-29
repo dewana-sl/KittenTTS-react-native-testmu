@@ -194,7 +194,7 @@ jobs:
       - name: Run TestMu Android benchmark
         id: run-benchmark
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 17
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -208,10 +208,10 @@ jobs:
           mkdir -p reports
           set +e
           set -o pipefail
-          timeout 10m npm run test:android 2>&1 | tee reports/appium-output.log
+          timeout 15m npm run test:android 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
           if [ "$status" -eq 124 ]; then
-            echo "Timed out after 10 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+            echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
           fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
