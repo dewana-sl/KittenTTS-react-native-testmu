@@ -69,19 +69,34 @@ function buildDeviceTable(report) {
       report.platformName
     )} ${escapeMarkdown(report.platformVersion)})`,
     "",
-    "| Model | Generation time (s) | Audio duration (s) | RTF | Samples | Sample rate | Sample hash |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | --- |",
+    "| Model | Status | Generation time (s) | Audio duration (s) | RTF | Samples | Sample rate | Sample hash / Error |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
 
   for (const row of report.rows || []) {
+    if (row.status === "failed") {
+      lines.push(
+        `| ${escapeMarkdown(
+          row.modelDisplayName || row.model
+        )} | Failed |  |  |  |  |  | ${escapeMarkdown(
+          `${row.failedStage || "Benchmark"}: ${
+            row.errorSummary || "Unknown model failure"
+          }`
+        )} |`
+      );
+      continue;
+    }
+
     lines.push(
-      `| ${escapeMarkdown(row.modelDisplayName || row.model)} | ${formatNumber(
-        row.generationSeconds
-      )} | ${formatNumber(row.durationSeconds)} | ${formatNumber(
-        row.rtf
-      )} | ${Number(row.sampleCount || 0).toLocaleString("en-US")} | ${
-        row.sampleRate || ""
-      } | \`${escapeMarkdown(row.sampleHash)}\` |`
+      `| ${escapeMarkdown(
+        row.modelDisplayName || row.model
+      )} | Passed | ${formatNumber(row.generationSeconds)} | ${formatNumber(
+        row.durationSeconds
+      )} | ${formatNumber(row.rtf)} | ${Number(
+        row.sampleCount || 0
+      ).toLocaleString("en-US")} | ${row.sampleRate || ""} | \`${escapeMarkdown(
+        row.sampleHash
+      )}\` |`
     );
   }
 
@@ -208,9 +223,9 @@ function buildCsv(reports) {
           row.sampleCount,
           row.sampleRate,
           row.sampleHash,
-          "passed",
-          "",
-          "",
+          row.status || "passed",
+          row.failedStage || "",
+          row.errorSummary || "",
           "",
         ]
           .map(escapeCsv)

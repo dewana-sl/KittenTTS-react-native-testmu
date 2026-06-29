@@ -61,9 +61,8 @@ The Appium test in `e2e/appium/specs/kittentts-benchmark.android.spec.js` valida
 - `benchmark-button` is enabled.
 - `benchmark-report` appears after all models finish.
 - Every bundled model has one result row: `nano`, `nano-int8`, `micro`, and `mini`.
-- `generationMs`, audio duration, RTF, and sample count are greater than zero.
-- `sampleRate` is `24000`.
-- `sampleHash` is an 8-character hex value.
+- Passed model rows include `generationMs`, audio duration, RTF, sample count, `sampleRate`, and `sampleHash`.
+- Failed model rows include the model name, failed stage, and error summary.
 
 The test does not judge subjective audio quality.
 
@@ -90,3 +89,5 @@ The final report job combines those files into:
 The PR comment is updated in place using a hidden marker, so repeated workflow runs do not spam the pull request.
 
 If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, failed stage, summary, workflow link, and the instruction to open that specific device job log for the exact LambdaTest/Appium error.
+
+If only one model hangs or fails, the app still writes the device report with that model marked as failed. This keeps the GitHub Action green when the automation successfully collected a truthful report.

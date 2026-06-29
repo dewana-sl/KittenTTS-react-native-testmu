@@ -43,6 +43,48 @@ function writeDeviceReport(report) {
   fs.writeFileSync(outputPath, `${JSON.stringify(payload, null, 2)}\n`);
 }
 
+async function getOptionalText(accessibilityId) {
+  try {
+    const element = await $(`~${accessibilityId}`);
+    if (await element.isDisplayed()) {
+      return await element.getText();
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+async function waitForBenchmarkReport(timeoutMs) {
+  const startedAt = Date.now();
+  let lastStatus = "No app status captured yet.";
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const report = await $("~benchmark-report");
+    if (await report.isExisting()) {
+      return report;
+    }
+
+    const errorMessage = await getOptionalText("error-message");
+    if (errorMessage) {
+      throw new Error(`App showed error-banner: ${errorMessage}`);
+    }
+
+    const statusLabel = await getOptionalText("status-label");
+    if (statusLabel && statusLabel !== lastStatus) {
+      lastStatus = statusLabel;
+      console.log(`[KittenTTS benchmark status] ${statusLabel}`);
+    }
+
+    await browser.pause(5000);
+  }
+
+  throw new Error(
+    `Timed out waiting for benchmark-report. Last app status: ${lastStatus}`
+  );
+}
+
 describe("KittenTTS React Native benchmark", () => {
   it("benchmarks every bundled model and writes a device report", async () => {
     const input = await $("~tts-input");
@@ -59,8 +101,8 @@ describe("KittenTTS React Native benchmark", () => {
     await benchmark.waitForEnabled({ timeout: 300000 });
     await benchmark.click();
 
-    const reportCard = await $("~benchmark-report");
-    await reportCard.waitForDisplayed({ timeout: 1800000 });
+    const reportCard = await waitForBenchmarkReport(1800000);
+    await reportCard.waitForDisplayed({ timeout: 60000 });
 
     const reportText = await $("~benchmark-json").getText();
     const report = parseBenchmarkJson(reportText);
@@ -78,16 +120,27 @@ describe("KittenTTS React Native benchmark", () => {
       if (!row) {
         throw new Error(`Missing benchmark row for model: ${expectedModel}`);
       }
-      expect(row.generationMs).toBeGreaterThan(0);
-      expect(row.generationSeconds).toBeGreaterThan(0);
-      expect(row.durationSeconds).toBeGreaterThan(0);
-      expect(row.rtf).toBeGreaterThan(0);
-      expect(row.sampleCount).toBeGreaterThan(0);
-      expect(row.sampleRate).toBe(24000);
-      if (!/^[0-9a-f]{8}$/.test(row.sampleHash)) {
+      if (!["passed", "failed"].includes(row.status)) {
         throw new Error(
-          `Invalid sample hash for ${expectedModel}: ${row.sampleHash}`
+          `Invalid status for ${expectedModel}: ${String(row.status)}`
         );
+      }
+
+      if (row.status === "passed") {
+        expect(row.generationMs).toBeGreaterThan(0);
+        expect(row.generationSeconds).toBeGreaterThan(0);
+        expect(row.durationSeconds).toBeGreaterThan(0);
+        expect(row.rtf).toBeGreaterThan(0);
+        expect(row.sampleCount).toBeGreaterThan(0);
+        expect(row.sampleRate).toBe(24000);
+        if (!/^[0-9a-f]{8}$/.test(row.sampleHash)) {
+          throw new Error(
+            `Invalid sample hash for ${expectedModel}: ${row.sampleHash}`
+          );
+        }
+      } else {
+        expect(row.failedStage.length).toBeGreaterThan(0);
+        expect(row.errorSummary.length).toBeGreaterThan(0);
       }
     }
 

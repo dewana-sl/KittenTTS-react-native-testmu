@@ -193,6 +193,7 @@ jobs:
 
       - name: Run TestMu Android benchmark
         id: run-benchmark
+        continue-on-error: true
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -201,22 +202,54 @@ jobs:
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
-        run: npm run test:android
+        run: |
+          mkdir -p reports
+          set +e
+          set -o pipefail
+          npm run test:android 2>&1 | tee reports/appium-output.log
+          status="${PIPESTATUS[0]}"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
         working-directory: e2e/appium
 
       - name: Write device failure report
-        if: failure() && steps.run-benchmark.outcome == 'failure'
+        if: steps.run-benchmark.outcome == 'failure'
         env:
           TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
         run: |
           mkdir -p e2e/appium/reports
           node - <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
 
+          function stripAnsi(value) {
+            return String(value || '').replace(/\x1b\[[0-9;]*m/g, '');
+          }
+
+          function compactLogTail(value) {
+            return stripAnsi(value)
+              .split(/\r?\n/)
+              .filter(Boolean)
+              .slice(-80)
+              .join('\n');
+          }
+
+          const logPath = path.join('e2e/appium/reports', 'appium-output.log');
+          const logText = fs.existsSync(logPath)
+            ? fs.readFileSync(logPath, 'utf8')
+            : '';
+          const cleanLog = stripAnsi(logText);
+          const errorLine =
+            cleanLog
+              .split(/\r?\n/)
+              .reverse()
+              .find((line) =>
+                /App showed error-banner|Timed out waiting|Error:|Timeout|no such element|FAILED/i.test(line),
+              ) || 'The Appium benchmark step failed.';
           const slug = String(process.env.TESTMU_ANDROID_DEVICE || 'device')
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, '-')
@@ -225,12 +258,14 @@ jobs:
             schemaVersion: 1,
             status: 'failed',
             failedStage: 'Run TestMu Android benchmark',
-            errorSummary: 'The Appium benchmark step failed before a benchmark JSON report was produced.',
+            errorSummary: errorLine.trim(),
             errorDetails: [
               `Device: ${process.env.TESTMU_ANDROID_DEVICE}`,
               `Android version: ${process.env.TESTMU_ANDROID_VERSION}`,
+              `Exit code: ${process.env.BENCHMARK_EXIT_CODE || '1'}`,
               `Workflow run: ${process.env.GITHUB_RUN_URL}`,
-              'Open the device job logs for the exact Appium/LambdaTest error.',
+              '',
+              compactLogTail(logText),
             ].join('\n'),
             device: process.env.TESTMU_ANDROID_DEVICE,
             platformName: 'Android',

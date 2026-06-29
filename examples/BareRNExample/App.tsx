@@ -39,16 +39,19 @@ type AppState =
 type BenchmarkRow = {
   model: string;
   modelDisplayName: string;
+  status: 'passed' | 'failed';
   voice: string;
   voiceDisplayName: string;
   speed: number;
-  generationMs: number;
-  generationSeconds: number;
-  durationSeconds: number;
-  rtf: number;
-  sampleCount: number;
-  sampleRate: number;
-  sampleHash: string;
+  generationMs?: number;
+  generationSeconds?: number;
+  durationSeconds?: number;
+  rtf?: number;
+  sampleCount?: number;
+  sampleRate?: number;
+  sampleHash?: string;
+  failedStage?: string;
+  errorSummary?: string;
 };
 
 type BenchmarkReport = {
@@ -71,6 +74,7 @@ const MODELS: KittenModel[] = [
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+const BENCHMARK_MODEL_TIMEOUT_MS = 4 * 60 * 1000;
 
 export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);
@@ -210,19 +214,36 @@ export default function App() {
 
         const existingInstance =
           model === selectedModel ? ttsRef.current : null;
-        const instance =
-          existingInstance ??
-          (await KittenTTS.create({
-            model,
-            player: createRNSoundPlayer(Sound),
-          }));
+        let instance: KittenTTS | null = null;
 
         try {
+          instance =
+            existingInstance ??
+            (await withTimeout(
+              KittenTTS.create(
+                {model, player: createRNSoundPlayer(Sound)},
+                (progress, info) => {
+                  if (mountedRef.current && info?.stage === 'downloading') {
+                    setState({
+                      kind: 'benchmarking',
+                      model: `${modelDisplayName(model)} ${Math.round(
+                        progress * 100,
+                      )}%`,
+                      completed: index,
+                      total: MODELS.length,
+                    });
+                  }
+                },
+              ),
+              BENCHMARK_MODEL_TIMEOUT_MS,
+              `Timed out preparing ${modelDisplayName(model)}`,
+            ));
+
           const generationStartedAt = Date.now();
-          const res = await instance.generate(
-            sampleText,
-            selectedVoice,
-            selectedSpeed,
+          const res = await withTimeout(
+            instance.generate(sampleText, selectedVoice, selectedSpeed),
+            BENCHMARK_MODEL_TIMEOUT_MS,
+            `Timed out generating ${modelDisplayName(model)}`,
           );
           const generationMs = Date.now() - generationStartedAt;
           const durationSeconds = res.duration;
@@ -231,6 +252,7 @@ export default function App() {
           rows.push({
             model: String(model),
             modelDisplayName: modelDisplayName(model),
+            status: 'passed',
             voice: String(res.voice),
             voiceDisplayName: voiceDisplayName(res.voice),
             speed: res.effectiveSpeed,
@@ -243,8 +265,19 @@ export default function App() {
             sampleHash: computeSampleHash(res.samples),
           });
           lastResult = res;
+        } catch (error: unknown) {
+          rows.push({
+            model: String(model),
+            modelDisplayName: modelDisplayName(model),
+            status: 'failed',
+            voice: String(selectedVoice),
+            voiceDisplayName: voiceDisplayName(selectedVoice),
+            speed: selectedSpeed,
+            failedStage: `Benchmark ${modelDisplayName(model)}`,
+            errorSummary: getErrorMessage(error, 'Model benchmark failed'),
+          });
         } finally {
-          if (!existingInstance) {
+          if (!existingInstance && instance) {
             await instance.dispose();
           }
         }
@@ -433,6 +466,26 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      value => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
+}
+
 function StatusBanner({state}: {state: AppState}) {
   switch (state.kind) {
     case 'idle':
@@ -562,8 +615,13 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
           accessibilityLabel={`benchmark-row-${row.model}`}>
           <Text style={styles.benchmarkModel}>{row.modelDisplayName}</Text>
           <Text style={styles.benchmarkMetric}>
-            Generate {(row.generationMs / 1000).toFixed(2)}s | Audio{' '}
-            {row.durationSeconds.toFixed(2)}s | RTF {row.rtf.toFixed(3)}
+            {row.status === 'passed'
+              ? `Generate ${((row.generationMs ?? 0) / 1000).toFixed(
+                  2,
+                )}s | Audio ${(row.durationSeconds ?? 0).toFixed(2)}s | RTF ${(
+                  row.rtf ?? 0
+                ).toFixed(3)}`
+              : `Failed | ${row.failedStage}: ${row.errorSummary}`}
           </Text>
         </View>
       ))}
