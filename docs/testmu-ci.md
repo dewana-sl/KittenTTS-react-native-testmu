@@ -9,7 +9,7 @@ The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 3. Builds `examples/BareRNExample` as a release Android APK.
 4. Uploads the APK once to LambdaTest/TestMu.
 5. Runs the same Appium benchmark on four Android real-device configs one after another.
-6. Optionally runs the same Appium benchmark on iOS when `TESTMU_IOS_APP_URL` is configured.
+6. Builds, uploads, and runs the same Appium benchmark on iPhone 14 when iOS signing secrets are configured. If signing is not configured, it can fall back to a pre-uploaded `TESTMU_IOS_APP_URL` or a downloadable `TESTMU_IOS_IPA_URL`.
 7. Collects one JSON result per device.
 8. Builds Markdown, CSV, and JSON summary reports.
 9. Posts or updates the benchmark table as a PR comment.
@@ -29,6 +29,32 @@ The cloud run uses a release APK because React Native debug APKs expect a Metro 
 
 The APK is built after installing the SDK from the workflow-created `.tgz` package, not from npm. The workflow builds the TypeScript `lib/` output before packing and uses `--ignore-scripts` while packing because the CEPhonemizer rebuild needs Emscripten. The generated CEPhonemizer runtime is checked in so CI can make a complete local tarball without rebuilding it. The workflow fails early if the installed `@kittentts/react-native` package version does not match the repository root package version.
 
+## iOS App Source
+
+The best iOS path is to build the signed IPA in CI from the current commit. That proves the iPhone 14 benchmark is testing the same SDK tarball and app code as the PR, not an older upload.
+
+Add these GitHub Actions secrets to enable that path:
+
+- `IOS_CERTIFICATE_P12_BASE64`
+- `IOS_CERTIFICATE_PASSWORD`
+- `IOS_PROVISIONING_PROFILE_BASE64`
+- `IOS_DEVELOPMENT_TEAM`
+
+Optional iOS variables or secrets:
+
+- `IOS_BUNDLE_IDENTIFIER` defaults to `org.reactjs.native.example.BasicExample`
+- `IOS_EXPORT_METHOD` defaults to `development`
+- `IOS_SIGNING_CERTIFICATE` defaults to `Apple Development`
+
+The iOS build job also installs the SDK from the workflow-created `.tgz` package before archiving the app.
+
+If CI signing is not available yet, the workflow can still run iOS with either:
+
+- `TESTMU_IOS_APP_URL`: a pre-uploaded `lt://...` app URL from TestMu/LambdaTest.
+- `TESTMU_IOS_IPA_URL`: a downloadable signed `.ipa`; CI downloads it, uploads it to TestMu, and uses the returned `lt://...` app URL.
+
+Those fallback paths are useful for proving the device automation, but they may test a stale IPA unless you refresh the upload for every commit.
+
 ## Device Matrix
 
 The workflow currently runs these devices sequentially with `max-parallel: 1`:
@@ -39,8 +65,9 @@ The workflow currently runs these devices sequentially with `max-parallel: 1`:
 | Galaxy Note10       | Android 12 | Android  |
 | Galaxy S21          | Android 12 | Android  |
 | Xiaomi Redmi Note 8 | Android 10 | Android  |
+| iPhone 14           | iOS 16     | iOS      |
 
-The iOS job is wired but skipped until a signed TestMu iOS app URL is available as `TESTMU_IOS_APP_URL` in GitHub Actions variables or secrets. LambdaTest/TestMu iOS real-device runs need a signed app upload, so this repo does not try to create an unsigned IPA inside CI.
+The iOS job is skipped when none of the iOS app sources above are configured. LambdaTest/TestMu iOS real-device runs need a signed IPA or an already uploaded `lt://...` app URL; unsigned simulator builds are not enough for this real-device benchmark.
 
 Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
 
