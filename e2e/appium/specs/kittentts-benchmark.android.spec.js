@@ -2,6 +2,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const EXPECTED_MODELS = ["nano", "nano-int8", "micro", "mini"];
+const BENCHMARK_REPORT_TIMEOUT_MS = Number(
+  process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 9 * 60 * 1000
+);
 
 function slugify(value) {
   return String(value || "device")
@@ -101,7 +104,9 @@ describe("KittenTTS React Native benchmark", () => {
     await benchmark.waitForEnabled({ timeout: 300000 });
     await benchmark.click();
 
-    const reportCard = await waitForBenchmarkReport(1800000);
+    const reportCard = await waitForBenchmarkReport(
+      BENCHMARK_REPORT_TIMEOUT_MS
+    );
     await reportCard.waitForDisplayed({ timeout: 60000 });
 
     const reportText = await $("~benchmark-json").getText();

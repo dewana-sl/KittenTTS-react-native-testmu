@@ -91,3 +91,5 @@ The PR comment is scoped to the commit SHA. A new pushed commit gets a new bench
 If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, failed stage, summary, workflow link, and the instruction to open that specific device job log for the exact LambdaTest/Appium error.
 
 If only one model hangs or fails, the app still writes the device report with that model marked as failed. This keeps the GitHub Action green when the automation successfully collected a truthful report.
+
+Each model benchmark is capped inside the app, and each remote Appium device run has a CI timeout. If a real device freezes or the app never exposes `benchmark-report`, the report records the timeout and the Appium log tail instead of leaving the PR with empty benchmark tables.

@@ -74,7 +74,7 @@ const MODELS: KittenModel[] = [
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-const BENCHMARK_MODEL_TIMEOUT_MS = 4 * 60 * 1000;
+const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 
 export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);

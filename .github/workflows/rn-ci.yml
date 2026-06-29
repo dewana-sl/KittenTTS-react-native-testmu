@@ -194,6 +194,7 @@ jobs:
       - name: Run TestMu Android benchmark
         id: run-benchmark
         continue-on-error: true
+        timeout-minutes: 12
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -201,13 +202,17 @@ jobs:
           TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: |
           mkdir -p reports
           set +e
           set -o pipefail
-          npm run test:android 2>&1 | tee reports/appium-output.log
+          timeout 10m npm run test:android 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
+          if [ "$status" -eq 124 ]; then
+            echo "Timed out after 10 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+          fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit "$status"
         working-directory: e2e/appium
