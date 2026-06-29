@@ -1,7 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const EXPECTED_MODELS = ["nano", "nano-int8", "micro", "mini"];
+const EXPECTED_MODELS = [
+  "kitten-tts-nano-0.8",
+  "kitten-tts-nano-0.8-int8",
+  "kitten-tts-micro-0.8",
+  "kitten-tts-mini-0.8",
+];
 const BENCHMARK_REPORT_TIMEOUT_MS = Number(
   process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 9 * 60 * 1000
 );
