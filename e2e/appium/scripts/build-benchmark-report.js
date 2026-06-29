@@ -3,7 +3,6 @@ const path = require("node:path");
 
 const inputDir = path.resolve(process.argv[2] || "benchmark-results");
 const outputDir = path.resolve(process.argv[3] || "benchmark-report");
-const marker = "<!-- kittentts-testmu-benchmark-report -->";
 
 function readJsonFiles(dir) {
   if (!fs.existsSync(dir)) {
@@ -253,7 +252,7 @@ function main() {
   );
   fs.writeFileSync(
     path.join(outputDir, "pr-comment.md"),
-    `${marker}\n${summary.trim()}\n`
+    `${summary.trim()}\n`
   );
 }
 

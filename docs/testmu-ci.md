@@ -86,7 +86,7 @@ The final report job combines those files into:
 | Model | Generation time (s) | Audio duration (s) | RTF | Samples | Sample rate | Sample hash |
 | ----- | ------------------: | -----------------: | --: | ------: | ----------: | ----------- |
 
-The PR comment is updated in place using a hidden marker, so repeated workflow runs do not spam the pull request.
+The PR comment is scoped to the commit SHA. A new pushed commit gets a new benchmark report comment, while a manual rerun of the same commit refreshes only that commit's own report comment.
 
 If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, failed stage, summary, workflow link, and the instruction to open that specific device job log for the exact LambdaTest/Appium error.
 

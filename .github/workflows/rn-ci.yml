@@ -332,8 +332,10 @@ jobs:
         with:
           script: |
             const fs = require('node:fs');
-            const marker = '<!-- kittentts-testmu-benchmark-report -->';
-            const body = fs.readFileSync('benchmark-report/pr-comment.md', 'utf8');
+            const sha = context.payload.pull_request.head.sha;
+            const marker = `<!-- kittentts-testmu-benchmark-report:${sha} -->`;
+            const report = fs.readFileSync('benchmark-report/pr-comment.md', 'utf8');
+            const body = `${marker}\n${report}`;
             const {owner, repo} = context.repo;
             const issue_number = context.payload.pull_request.number;
             const comments = await github.rest.issues.listComments({
@@ -347,6 +349,7 @@ jobs:
             );
 
             if (previous) {
+              core.info(`Updating benchmark report comment for commit ${sha}.`);
               await github.rest.issues.updateComment({
                 owner,
                 repo,
@@ -354,6 +357,7 @@ jobs:
                 body,
               });
             } else {
+              core.info(`Creating benchmark report comment for commit ${sha}.`);
               await github.rest.issues.createComment({
                 owner,
                 repo,
