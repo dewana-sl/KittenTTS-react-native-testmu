@@ -113,11 +113,15 @@ function buildSummary(reports) {
   }
 
   const completedReports = reports.filter(
-    (report) => report.status !== "failed"
+    (report) => report.status !== "failed" && report.status !== "partial"
   );
+  const partialReports = reports.filter((report) => report.status === "partial");
   const failedReports = reports.filter((report) => report.status === "failed");
   const first = reports.find((report) => report.sampleText) || reports[0];
-  const firstPassed = completedReports[0] || first;
+  const firstPassed =
+    completedReports[0] ||
+    partialReports.find((report) => report.voice || report.voiceDisplayName) ||
+    first;
   const lines = [
     "# KittenTTS TestMu Benchmark Report",
     "",
@@ -132,6 +136,7 @@ function buildSummary(reports) {
       firstPassed.speed === undefined ? "unavailable" : `${firstPassed.speed}x`
     }`,
     `- Devices completed: ${completedReports.length}`,
+    `- Devices partial: ${partialReports.length}`,
     `- Devices failed: ${failedReports.length}`,
     `- GitHub run: ${
       process.env.GITHUB_RUN_ID || first.githubRunId || "local"

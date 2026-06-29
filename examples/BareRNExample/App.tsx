@@ -62,7 +62,7 @@ type BenchmarkReport = {
   voiceDisplayName: string;
   speed: number;
   startedAt: string;
-  finishedAt: string;
+  finishedAt: string | null;
   rows: BenchmarkRow[];
 };
 
@@ -75,6 +75,25 @@ const MODELS: KittenModel[] = [
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
+
+function makeFailedBenchmarkRow(
+  model: KittenModel,
+  failedStage: string,
+  errorSummary: string,
+  voice: KittenVoice,
+  speed: number,
+): BenchmarkRow {
+  return {
+    model: String(model),
+    modelDisplayName: modelDisplayName(model),
+    status: 'failed',
+    voice: String(voice),
+    voiceDisplayName: voiceDisplayName(voice),
+    speed,
+    failedStage,
+    errorSummary,
+  };
+}
 
 export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);
@@ -195,16 +214,47 @@ export default function App() {
       return;
     }
 
-    const rows: BenchmarkRow[] = [];
     let lastResult: KittenTTSResult | null = null;
 
     try {
       setBenchmarkReport(null);
       setResult(null);
       const startedAt = new Date().toISOString();
+      const rows = MODELS.map(model =>
+        makeFailedBenchmarkRow(
+          model,
+          `Benchmark ${modelDisplayName(model)}`,
+          'Benchmark did not run before the device session ended.',
+          selectedVoice,
+          selectedSpeed,
+        ),
+      );
+      const publishReport = (finishedAt: string | null = null) => {
+        setBenchmarkReport({
+          schemaVersion: 1,
+          sampleText,
+          characterLength: Array.from(sampleText).length,
+          voice: String(selectedVoice),
+          voiceDisplayName: voiceDisplayName(selectedVoice),
+          speed: selectedSpeed,
+          startedAt,
+          finishedAt,
+          rows: [...rows],
+        });
+      };
+
+      publishReport();
 
       for (let index = 0; index < MODELS.length; index += 1) {
         const model = MODELS[index];
+        rows[index] = makeFailedBenchmarkRow(
+          model,
+          `Benchmark ${modelDisplayName(model)}`,
+          'Benchmark started but did not finish before the device session ended.',
+          selectedVoice,
+          selectedSpeed,
+        );
+        publishReport();
         setState({
           kind: 'benchmarking',
           model: modelDisplayName(model),
@@ -249,7 +299,7 @@ export default function App() {
           const durationSeconds = res.duration;
           const generationSeconds = generationMs / 1000;
 
-          rows.push({
+          rows[index] = {
             model: String(model),
             modelDisplayName: modelDisplayName(model),
             status: 'passed',
@@ -263,19 +313,18 @@ export default function App() {
             sampleCount: res.samples.length,
             sampleRate: res.sampleRate,
             sampleHash: computeSampleHash(res.samples),
-          });
+          };
+          publishReport();
           lastResult = res;
         } catch (error: unknown) {
-          rows.push({
-            model: String(model),
-            modelDisplayName: modelDisplayName(model),
-            status: 'failed',
-            voice: String(selectedVoice),
-            voiceDisplayName: voiceDisplayName(selectedVoice),
-            speed: selectedSpeed,
-            failedStage: `Benchmark ${modelDisplayName(model)}`,
-            errorSummary: getErrorMessage(error, 'Model benchmark failed'),
-          });
+          rows[index] = makeFailedBenchmarkRow(
+            model,
+            `Benchmark ${modelDisplayName(model)}`,
+            getErrorMessage(error, 'Model benchmark failed'),
+            selectedVoice,
+            selectedSpeed,
+          );
+          publishReport();
         } finally {
           if (!existingInstance && instance) {
             await instance.dispose();
@@ -284,17 +333,7 @@ export default function App() {
       }
 
       setResult(lastResult);
-      setBenchmarkReport({
-        schemaVersion: 1,
-        sampleText,
-        characterLength: Array.from(sampleText).length,
-        voice: String(selectedVoice),
-        voiceDisplayName: voiceDisplayName(selectedVoice),
-        speed: selectedSpeed,
-        startedAt,
-        finishedAt: new Date().toISOString(),
-        rows,
-      });
+      publishReport(new Date().toISOString());
       setState({kind: 'idle'});
     } catch (error: unknown) {
       setState({

@@ -24,6 +24,45 @@ function parseBenchmarkJson(rawText) {
   return JSON.parse(rawText.slice(jsonStart, jsonEnd + 1));
 }
 
+function hasFinishedBenchmark(report) {
+  return Boolean(report?.finishedAt);
+}
+
+async function getBenchmarkReportFromUi() {
+  try {
+    const reportText = await $("~benchmark-json").getText();
+    return parseBenchmarkJson(reportText);
+  } catch {
+    return null;
+  }
+}
+
+function markPartialReport(report, timeoutMessage) {
+  return {
+    ...report,
+    status: "partial",
+    finishedAt: report.finishedAt || null,
+    rows: (report.rows || []).map((row) => {
+      if (row.status !== "failed") {
+        return row;
+      }
+
+      const summary = String(row.errorSummary || "");
+      if (
+        !/did not run|did not finish|in progress|session ended/i.test(summary)
+      ) {
+        return row;
+      }
+
+      return {
+        ...row,
+        failedStage: row.failedStage || "Benchmark timeout",
+        errorSummary: `${summary} ${timeoutMessage}`.trim(),
+      };
+    }),
+  };
+}
+
 function writeDeviceReport(report) {
   const device = process.env.TESTMU_ANDROID_DEVICE || "Pixel 5";
   const platformVersion = process.env.TESTMU_ANDROID_VERSION || "12";
@@ -62,11 +101,15 @@ async function getOptionalText(accessibilityId) {
 async function waitForBenchmarkReport(timeoutMs) {
   const startedAt = Date.now();
   let lastStatus = "No app status captured yet.";
+  let lastReport = null;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const report = await $("~benchmark-report");
-    if (await report.isExisting()) {
-      return report;
+    const report = await getBenchmarkReportFromUi();
+    if (report) {
+      lastReport = report;
+      if (hasFinishedBenchmark(report)) {
+        return report;
+      }
     }
 
     const errorMessage = await getOptionalText("error-message");
@@ -83,9 +126,12 @@ async function waitForBenchmarkReport(timeoutMs) {
     await browser.pause(5000);
   }
 
-  throw new Error(
-    `Timed out waiting for benchmark-report. Last app status: ${lastStatus}`
-  );
+  const timeoutMessage = `Timed out waiting for benchmark-report. Last app status: ${lastStatus}`;
+  if (lastReport) {
+    return markPartialReport(lastReport, timeoutMessage);
+  }
+
+  throw new Error(timeoutMessage);
 }
 
 describe("KittenTTS React Native benchmark", () => {
@@ -104,13 +150,9 @@ describe("KittenTTS React Native benchmark", () => {
     await benchmark.waitForEnabled({ timeout: 300000 });
     await benchmark.click();
 
-    const reportCard = await waitForBenchmarkReport(
+    const report = await waitForBenchmarkReport(
       BENCHMARK_REPORT_TIMEOUT_MS
     );
-    await reportCard.waitForDisplayed({ timeout: 60000 });
-
-    const reportText = await $("~benchmark-json").getText();
-    const report = parseBenchmarkJson(reportText);
 
     expect(report.schemaVersion).toBe(1);
     expect(report.sampleText.length).toBeGreaterThan(0);
