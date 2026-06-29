@@ -685,6 +685,8 @@ jobs:
           merge-multiple: true
 
       - name: Build benchmark report
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: node e2e/appium/scripts/build-benchmark-report.js benchmark-results benchmark-report
 
       - name: Upload combined benchmark report
