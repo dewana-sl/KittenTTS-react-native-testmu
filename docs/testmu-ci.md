@@ -6,14 +6,13 @@ The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
 2. Builds the SDK TypeScript output, packs the SDK with `npm pack --ignore-scripts`, and installs that local tarball into `examples/BareRNExample`.
-3. Builds, uploads, and runs the Appium benchmark on iPhone 14 first.
-4. Stops before Android if the iOS app source is missing or the iPhone 14 benchmark fails.
-5. Builds `examples/BareRNExample` as a release Android APK only after the iOS gate passes.
-6. Uploads the APK once to LambdaTest/TestMu.
-7. Runs the same Appium benchmark on four Android real-device configs one after another.
-8. Collects one JSON result per device.
-9. Builds Markdown, CSV, and JSON summary reports.
-10. Posts or updates the benchmark table as a PR comment.
+3. Builds `examples/BareRNExample` as a release Android APK.
+4. Uploads the APK once to LambdaTest/TestMu.
+5. Runs the same Appium benchmark on four Android real-device configs one after another.
+6. Builds, uploads, and runs the same Appium benchmark on iPhone 14 when iOS signing secrets are configured. If signing is not configured, it can fall back to a pre-uploaded `TESTMU_IOS_APP_URL` or a downloadable `TESTMU_IOS_IPA_URL`.
+7. Collects one JSON result per device.
+8. Builds Markdown, CSV, and JSON summary reports.
+9. Posts or updates the benchmark table as a PR comment.
 
 KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
@@ -68,7 +67,7 @@ The workflow currently runs these devices sequentially with `max-parallel: 1`:
 | Xiaomi Redmi Note 8 | Android 10 | Android  |
 | iPhone 14           | iOS 16     | iOS      |
 
-When none of the iOS app sources above are configured, the `iOS gate before Android` job fails fast and Android does not run. LambdaTest/TestMu iOS real-device runs need a signed IPA or an already uploaded `lt://...` app URL; unsigned simulator builds are not enough for this real-device benchmark.
+The iOS job is skipped when none of the iOS app sources above are configured. LambdaTest/TestMu iOS real-device runs need a signed IPA or an already uploaded `lt://...` app URL; unsigned simulator builds are not enough for this real-device benchmark.
 
 Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
 
