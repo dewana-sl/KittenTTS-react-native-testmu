@@ -5,7 +5,7 @@ This repository uses GitHub Actions plus LambdaTest/TestMu App Automation for a 
 The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
-2. Packs the SDK with `npm pack --ignore-scripts` and installs that local tarball into `examples/BareRNExample`.
+2. Builds the SDK TypeScript output, packs the SDK with `npm pack --ignore-scripts`, and installs that local tarball into `examples/BareRNExample`.
 3. Builds `examples/BareRNExample` as a release Android APK.
 4. Uploads the APK once to LambdaTest/TestMu.
 5. Runs the same Appium benchmark on four Android real-device configs one after another.
@@ -27,7 +27,7 @@ Without these secrets, the TestMu upload job prints a skip message and exits suc
 
 The cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
-The APK is built after installing the SDK from the workflow-created `.tgz` package, not from npm. The workflow uses `--ignore-scripts` while packing because the repository already contains the generated package files and the CEPhonemizer rebuild needs Emscripten. The workflow fails early if the installed `@kittentts/react-native` package version does not match the repository root package version.
+The APK is built after installing the SDK from the workflow-created `.tgz` package, not from npm. The workflow builds the TypeScript `lib/` output before packing and uses `--ignore-scripts` while packing because the CEPhonemizer rebuild needs Emscripten. The generated CEPhonemizer runtime is checked in so CI can make a complete local tarball without rebuilding it. The workflow fails early if the installed `@kittentts/react-native` package version does not match the repository root package version.
 
 ## Device Matrix
 

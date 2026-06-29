@@ -51,6 +51,7 @@ jobs:
         name: Build SDK package tarball
         run: |
           npm ci
+          npm run build:ts
           mkdir -p "$RUNNER_TEMP/kittentts-pack"
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
           tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
