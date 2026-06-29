@@ -706,9 +706,8 @@ jobs:
           fi
 
           if [ "$IOS_ENABLED" != "true" ]; then
-            echo "iOS benchmark is not configured, so Android benchmarks will not run yet."
-            echo "Configure iOS signing secrets, TESTMU_IOS_APP_URL, or TESTMU_IOS_IPA_URL, then rerun."
-            exit 1
+            echo "iOS benchmark is disabled; allowing Android benchmarks to run."
+            exit 0
           fi
 
           if [ "$IOS_MODE" = "build" ] && [ "$IOS_BUILD_RESULT" != "success" ]; then
