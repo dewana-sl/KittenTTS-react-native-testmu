@@ -52,7 +52,7 @@ jobs:
         run: |
           npm ci
           mkdir -p "$RUNNER_TEMP/kittentts-pack"
-          npm pack --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
           tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
           if [ ! -f "$tarball" ]; then
             echo "SDK tarball was not created."
