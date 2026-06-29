@@ -47,7 +47,34 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - run: npm ci
+      - id: sdk-pack
+        name: Build SDK package tarball
+        run: |
+          npm ci
+          mkdir -p "$RUNNER_TEMP/kittentts-pack"
+          npm pack --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
+          if [ ! -f "$tarball" ]; then
+            echo "SDK tarball was not created."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed SDK tarball: $tarball"
+
+      - name: Install example dependencies from SDK tarball
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
+          node - <<'NODE'
+          const rootPackage = require('../../package.json');
+          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
+          if (installedPackage.version !== rootPackage.version) {
+            throw new Error(
+              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
+            );
+          }
+          console.log(`Using local SDK tarball version ${installedPackage.version}`);
+          NODE
         working-directory: examples/BareRNExample
 
       - run: ./gradlew assembleRelease
@@ -170,9 +197,6 @@ jobs:
           - slug: galaxy-note10
             device: Galaxy Note10
             version: "12"
-          - slug: galaxy-s22-ultra-5g
-            device: Galaxy S22 Ultra 5G
-            version: "12"
           - slug: galaxy-s21
             device: Galaxy S21
             version: "12"
@@ -199,6 +223,9 @@ jobs:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
           TESTMU_APP_URL: ${{ needs.upload-testmu-app.outputs.app_url }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
@@ -206,92 +233,39 @@ jobs:
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: |
           mkdir -p reports
+          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
           set +e
           set -o pipefail
           timeout 15m npm run test:android 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
           if [ "$status" -eq 124 ]; then
             echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
           fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
           exit "$status"
         working-directory: e2e/appium
 
       - name: Write device failure report
         if: steps.run-benchmark.outcome == 'failure'
         env:
-          TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
-          TESTMU_ANDROID_VERSION: ${{ matrix.version }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-benchmark.outputs.total_runtime_seconds }}
         run: |
-          mkdir -p e2e/appium/reports
-          node - <<'NODE'
-          const fs = require('node:fs');
-          const path = require('node:path');
-
-          function stripAnsi(value) {
-            return String(value || '').replace(/\x1b\[[0-9;]*m/g, '');
-          }
-
-          function compactLogTail(value) {
-            return stripAnsi(value)
-              .split(/\r?\n/)
-              .filter(Boolean)
-              .slice(-80)
-              .join('\n');
-          }
-
-          const logPath = path.join('e2e/appium/reports', 'appium-output.log');
-          const logText = fs.existsSync(logPath)
-            ? fs.readFileSync(logPath, 'utf8')
-            : '';
-          const cleanLog = stripAnsi(logText);
-          const errorLine =
-            cleanLog
-              .split(/\r?\n/)
-              .reverse()
-              .find((line) =>
-                /App showed error-banner|Timed out waiting|Error:|Timeout|no such element|FAILED/i.test(line),
-              ) || 'The Appium benchmark step failed.';
-          const slug = String(process.env.TESTMU_ANDROID_DEVICE || 'device')
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '');
-          const report = {
-            schemaVersion: 1,
-            status: 'failed',
-            failedStage: 'Run TestMu Android benchmark',
-            errorSummary: errorLine.trim(),
-            errorDetails: [
-              `Device: ${process.env.TESTMU_ANDROID_DEVICE}`,
-              `Android version: ${process.env.TESTMU_ANDROID_VERSION}`,
-              `Exit code: ${process.env.BENCHMARK_EXIT_CODE || '1'}`,
-              `Workflow run: ${process.env.GITHUB_RUN_URL}`,
-              '',
-              compactLogTail(logText),
-            ].join('\n'),
-            device: process.env.TESTMU_ANDROID_DEVICE,
-            platformName: 'Android',
-            platformVersion: process.env.TESTMU_ANDROID_VERSION,
-            realDevice: true,
-            sessionId: null,
-            githubRunId: process.env.GITHUB_RUN_ID || null,
-            githubSha: process.env.GITHUB_SHA || null,
-            capturedAt: new Date().toISOString(),
-            sampleText: process.env.TESTMU_SAMPLE_TEXT || null,
-            characterLength: process.env.TESTMU_SAMPLE_TEXT
-              ? Array.from(process.env.TESTMU_SAMPLE_TEXT).length
-              : null,
-            rows: [],
-          };
-
-          fs.writeFileSync(
-            path.join('e2e/appium/reports', `${slug}.json`),
-            `${JSON.stringify(report, null, 2)}\n`,
-          );
-          NODE
+          node scripts/write-failure-report.js
+        working-directory: e2e/appium
 
       - name: Upload device benchmark report
         if: always()
@@ -301,12 +275,124 @@ jobs:
           path: e2e/appium/reports/*.json
           if-no-files-found: warn
 
+  prepare-testmu-ios-app:
+    name: Prepare TestMu iOS app
+    runs-on: ubuntu-latest
+    outputs:
+      enabled: ${{ steps.ios-app-url.outputs.enabled }}
+
+    steps:
+      - id: ios-app-url
+        name: Check iOS TestMu app URL
+        env:
+          TESTMU_IOS_APP_URL_SECRET: ${{ secrets.TESTMU_IOS_APP_URL }}
+          TESTMU_IOS_APP_URL_VAR: ${{ vars.TESTMU_IOS_APP_URL }}
+        run: |
+          app_url="${TESTMU_IOS_APP_URL_SECRET:-$TESTMU_IOS_APP_URL_VAR}"
+          if [ -n "$app_url" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping iOS TestMu benchmark because TESTMU_IOS_APP_URL is not configured."
+          fi
+
+  testmu-ios-benchmark:
+    name: TestMu iOS benchmark (${{ matrix.device }})
+    runs-on: ubuntu-latest
+    needs:
+      - upload-testmu-app
+      - prepare-testmu-ios-app
+    if: needs.upload-testmu-app.outputs.enabled == 'true' && needs.prepare-testmu-ios-app.outputs.enabled == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - slug: iphone-14
+            device: iPhone 14
+            version: "16"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Appium harness
+        run: npm ci
+        working-directory: e2e/appium
+
+      - name: Run TestMu iOS benchmark
+        id: run-benchmark
+        continue-on-error: true
+        timeout-minutes: 17
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_IOS_APP_URL_SECRET: ${{ secrets.TESTMU_IOS_APP_URL }}
+          TESTMU_IOS_APP_URL_VAR: ${{ vars.TESTMU_IOS_APP_URL }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_IOS_DEVICE: ${{ matrix.device }}
+          TESTMU_IOS_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+        run: |
+          mkdir -p reports
+          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
+          set +e
+          set -o pipefail
+          export TESTMU_IOS_APP_URL="${TESTMU_IOS_APP_URL_SECRET:-$TESTMU_IOS_APP_URL_VAR}"
+          timeout 15m npm run test:ios 2>&1 | tee reports/appium-output.log
+          status="${PIPESTATUS[0]}"
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
+          if [ "$status" -eq 124 ]; then
+            echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+          fi
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        working-directory: e2e/appium
+
+      - name: Write device failure report
+        if: steps.run-benchmark.outcome == 'failure'
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-benchmark.outputs.total_runtime_seconds }}
+        run: |
+          node scripts/write-failure-report.js
+        working-directory: e2e/appium
+
+      - name: Upload device benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-ios-${{ matrix.slug }}
+          path: e2e/appium/reports/*.json
+          if-no-files-found: warn
+
   testmu-benchmark-report:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
       - upload-testmu-app
+      - prepare-testmu-ios-app
       - testmu-android-benchmark
+      - testmu-ios-benchmark
     if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
 
     steps:

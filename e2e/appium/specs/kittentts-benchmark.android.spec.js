@@ -68,20 +68,51 @@ function markPartialReport(report, timeoutMessage) {
   };
 }
 
-function writeDeviceReport(report) {
-  const device = process.env.TESTMU_ANDROID_DEVICE || "Pixel 5";
-  const platformVersion = process.env.TESTMU_ANDROID_VERSION || "12";
+function getDeviceName() {
+  return (
+    process.env.TESTMU_DEVICE ||
+    process.env.TESTMU_ANDROID_DEVICE ||
+    process.env.TESTMU_IOS_DEVICE ||
+    "Pixel 5"
+  );
+}
+
+function getPlatformName() {
+  return (
+    process.env.TESTMU_PLATFORM_NAME ||
+    (process.env.TESTMU_IOS_DEVICE ? "iOS" : "Android")
+  );
+}
+
+function getPlatformVersion() {
+  return (
+    process.env.TESTMU_PLATFORM_VERSION ||
+    process.env.TESTMU_ANDROID_VERSION ||
+    process.env.TESTMU_IOS_VERSION ||
+    "12"
+  );
+}
+
+function writeDeviceReport(report, startedAtMs) {
+  const device = getDeviceName();
+  const finishedAtMs = Date.now();
   const outputDir = path.resolve(__dirname, "..", "reports");
   fs.mkdirSync(outputDir, { recursive: true });
 
   const payload = {
     device,
-    platformName: "Android",
-    platformVersion,
+    platformName: getPlatformName(),
+    platformVersion: getPlatformVersion(),
     realDevice: process.env.TESTMU_REAL_DEVICE !== "false",
     sessionId: browser.sessionId,
     githubRunId: process.env.GITHUB_RUN_ID || null,
     githubSha: process.env.GITHUB_SHA || null,
+    deviceStartedAt: new Date(startedAtMs).toISOString(),
+    deviceFinishedAt: new Date(finishedAtMs).toISOString(),
+    totalRuntimeMs: finishedAtMs - startedAtMs,
+    totalRuntimeSeconds: Number(
+      ((finishedAtMs - startedAtMs) / 1000).toFixed(3)
+    ),
     capturedAt: new Date().toISOString(),
     ...report,
   };
@@ -141,6 +172,7 @@ async function waitForBenchmarkReport(timeoutMs) {
 
 describe("KittenTTS React Native benchmark", () => {
   it("benchmarks every bundled model and writes a device report", async () => {
+    const deviceStartedAtMs = Date.now();
     const input = await $("~tts-input");
     await input.waitForDisplayed({ timeout: 300000 });
 
@@ -164,9 +196,7 @@ describe("KittenTTS React Native benchmark", () => {
     await benchmark.waitForEnabled({ timeout: 300000 });
     await benchmark.click();
 
-    const report = await waitForBenchmarkReport(
-      BENCHMARK_REPORT_TIMEOUT_MS
-    );
+    const report = await waitForBenchmarkReport(BENCHMARK_REPORT_TIMEOUT_MS);
 
     expect(report.schemaVersion).toBe(1);
     expect(report.sampleText.length).toBeGreaterThan(0);
@@ -190,6 +220,15 @@ describe("KittenTTS React Native benchmark", () => {
       if (row.status === "passed") {
         expect(row.generationMs).toBeGreaterThan(0);
         expect(row.generationSeconds).toBeGreaterThan(0);
+        expect(row.firstGenerationMs).toBeGreaterThan(0);
+        expect(row.firstGenerationSeconds).toBeGreaterThan(0);
+        expect(row.warmRunCount).toBe(5);
+        expect(row.warmGenerationMs.length).toBe(5);
+        expect(row.warmRtf.length).toBe(5);
+        expect(row.warmP50GenerationMs).toBeGreaterThan(0);
+        expect(row.warmP95GenerationMs).toBeGreaterThan(0);
+        expect(row.warmP50Rtf).toBeGreaterThan(0);
+        expect(row.warmP95Rtf).toBeGreaterThan(0);
         expect(row.durationSeconds).toBeGreaterThan(0);
         expect(row.rtf).toBeGreaterThan(0);
         expect(row.sampleCount).toBeGreaterThan(0);
@@ -205,6 +244,6 @@ describe("KittenTTS React Native benchmark", () => {
       }
     }
 
-    writeDeviceReport(report);
+    writeDeviceReport(report, deviceStartedAtMs);
   });
 });

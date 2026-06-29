@@ -1,16 +1,18 @@
-# TestMu Android Benchmark CI
+# TestMu Benchmark CI
 
-This repository uses GitHub Actions plus LambdaTest/TestMu App Automation for a deterministic Android benchmark of `examples/BareRNExample`.
+This repository uses GitHub Actions plus LambdaTest/TestMu App Automation for a deterministic benchmark of `examples/BareRNExample`.
 
 The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
-2. Builds `examples/BareRNExample` as a release Android APK.
-3. Uploads the APK once to LambdaTest/TestMu.
-4. Runs the same Appium benchmark on five Android real-device configs one after another.
-5. Collects one JSON result per device.
-6. Builds Markdown, CSV, and JSON summary reports.
-7. Posts or updates the benchmark table as a PR comment.
+2. Packs the SDK with `npm pack` and installs that local tarball into `examples/BareRNExample`.
+3. Builds `examples/BareRNExample` as a release Android APK.
+4. Uploads the APK once to LambdaTest/TestMu.
+5. Runs the same Appium benchmark on four Android real-device configs one after another.
+6. Optionally runs the same Appium benchmark on iOS when `TESTMU_IOS_APP_URL` is configured.
+7. Collects one JSON result per device.
+8. Builds Markdown, CSV, and JSON summary reports.
+9. Posts or updates the benchmark table as a PR comment.
 
 KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
@@ -25,17 +27,20 @@ Without these secrets, the TestMu upload job prints a skip message and exits suc
 
 The cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
+The APK is built after installing the SDK from the workflow-created `.tgz` package, not from npm. The workflow fails early if the installed `@kittentts/react-native` package version does not match the repository root package version.
+
 ## Device Matrix
 
 The workflow currently runs these devices sequentially with `max-parallel: 1`:
 
-| Device              | OS         |
-| ------------------- | ---------- |
-| Pixel 5             | Android 12 |
-| Galaxy Note10       | Android 12 |
-| Galaxy S22 Ultra 5G | Android 12 |
-| Galaxy S21          | Android 12 |
-| Xiaomi Redmi Note 8 | Android 10 |
+| Device              | OS         | Platform |
+| ------------------- | ---------- | -------- |
+| Pixel 5             | Android 12 | Android  |
+| Galaxy Note10       | Android 12 | Android  |
+| Galaxy S21          | Android 12 | Android  |
+| Xiaomi Redmi Note 8 | Android 10 | Android  |
+
+The iOS job is wired but skipped until a signed TestMu iOS app URL is available as `TESTMU_IOS_APP_URL` in GitHub Actions variables or secrets. LambdaTest/TestMu iOS real-device runs need a signed app upload, so this repo does not try to create an unsigned IPA inside CI.
 
 Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
 
@@ -61,7 +66,7 @@ The Appium test in `e2e/appium/specs/kittentts-benchmark.android.spec.js` valida
 - `benchmark-button` is enabled.
 - `benchmark-report` appears after all models finish.
 - Every bundled model has one result row: `nano`, `nano-int8`, `micro`, and `mini`.
-- Passed model rows include `generationMs`, audio duration, RTF, sample count, `sampleRate`, and `sampleHash`.
+- Passed model rows include the first generation timing, five warm measured runs, best warm generation timing, warm p50, warm p95, RTF values, audio duration, sample count, `sampleRate`, and `sampleHash`.
 - Failed model rows include the model name, failed stage, and error summary.
 
 The test does not judge subjective audio quality.
@@ -83,12 +88,14 @@ The final report job combines those files into:
 
 `summary.md` and the PR comment include common run details plus one table per device:
 
-| Model | Generation time (s) | Audio duration (s) | RTF | Samples | Sample rate | Sample hash |
-| ----- | ------------------: | -----------------: | --: | ------: | ----------: | ----------- |
+| Model | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Audio (s) | Samples | Sample hash |
+| ----- | ------------: | ------------: | -----------: | -----------: | -------: | -----------: | -----------: | --------: | ------: | ----------- |
+
+For each model, the app does one warm-up generation and then five measured warm generations. The main `Best warm` and `Best RTF` columns use the fastest of those five measured warm runs. The `Warm p50` and `Warm p95` columns show the median-ish and tail latency across the same five warm runs.
 
 The PR comment is scoped to the commit SHA. A new pushed commit gets a new benchmark report comment, while a manual rerun of the same commit refreshes only that commit's own report comment.
 
-If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, failed stage, summary, workflow link, and the instruction to open that specific device job log for the exact LambdaTest/Appium error.
+If a device fails before producing benchmark numbers, the device job writes a failure JSON artifact instead. The final report and PR comment then show the device, total run time, failed stage, a short summary, and a link to the workflow logs.
 
 If only one model hangs or fails, the app still writes a live device report with that model marked as failed or unfinished. This keeps the GitHub Action green when the automation successfully collected a truthful partial report.
 

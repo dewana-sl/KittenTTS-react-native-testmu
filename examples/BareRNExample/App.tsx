@@ -43,6 +43,19 @@ type BenchmarkRow = {
   voice: string;
   voiceDisplayName: string;
   speed: number;
+  firstGenerationMs?: number;
+  firstGenerationSeconds?: number;
+  firstRtf?: number;
+  warmRunCount?: number;
+  warmGenerationMs?: number[];
+  warmGenerationSeconds?: number[];
+  warmRtf?: number[];
+  warmP50GenerationMs?: number;
+  warmP50GenerationSeconds?: number;
+  warmP95GenerationMs?: number;
+  warmP95GenerationSeconds?: number;
+  warmP50Rtf?: number;
+  warmP95Rtf?: number;
   generationMs?: number;
   generationSeconds?: number;
   durationSeconds?: number;
@@ -75,6 +88,7 @@ const MODELS: KittenModel[] = [
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
+const BENCHMARK_WARM_RUNS = 5;
 
 function makeFailedBenchmarkRow(
   model: KittenModel,
@@ -289,15 +303,60 @@ export default function App() {
               `Timed out preparing ${modelDisplayName(model)}`,
             ));
 
-          const generationStartedAt = Date.now();
-          const res = await withTimeout(
-            instance.generate(sampleText, selectedVoice, selectedSpeed),
-            BENCHMARK_MODEL_TIMEOUT_MS,
-            `Timed out generating ${modelDisplayName(model)}`,
+          const firstRun = await measureGeneration(
+            instance,
+            sampleText,
+            selectedVoice,
+            selectedSpeed,
+            `Timed out warming ${modelDisplayName(model)}`,
           );
-          const generationMs = Date.now() - generationStartedAt;
-          const durationSeconds = res.duration;
+
+          const measuredRuns: Array<{
+            result: KittenTTSResult;
+            generationMs: number;
+          }> = [];
+
+          for (let run = 0; run < BENCHMARK_WARM_RUNS; run += 1) {
+            setState({
+              kind: 'benchmarking',
+              model: `${modelDisplayName(model)} run ${
+                run + 1
+              }/${BENCHMARK_WARM_RUNS}`,
+              completed: index,
+              total: MODELS.length,
+            });
+            measuredRuns.push(
+              await measureGeneration(
+                instance,
+                sampleText,
+                selectedVoice,
+                selectedSpeed,
+                `Timed out generating ${modelDisplayName(model)} warm run ${
+                  run + 1
+                }/${BENCHMARK_WARM_RUNS}`,
+              ),
+            );
+          }
+
+          const sortedWarmMs = measuredRuns
+            .map(run => run.generationMs)
+            .sort((a, b) => a - b);
+          const bestRun = measuredRuns.reduce((best, candidate) =>
+            candidate.generationMs < best.generationMs ? candidate : best,
+          );
+          const res = bestRun.result;
+          const generationMs = bestRun.generationMs;
+          const firstGenerationSeconds = firstRun.generationMs / 1000;
           const generationSeconds = generationMs / 1000;
+          const durationSeconds = res.duration;
+          const warmP50GenerationMs = percentile(sortedWarmMs, 50);
+          const warmP95GenerationMs = percentile(sortedWarmMs, 95);
+          const warmGenerationSeconds = measuredRuns.map(
+            run => run.generationMs / 1000,
+          );
+          const warmRtf = warmGenerationSeconds.map(seconds =>
+            durationSeconds > 0 ? seconds / durationSeconds : 0,
+          );
 
           rows[index] = {
             model: String(model),
@@ -306,6 +365,28 @@ export default function App() {
             voice: String(res.voice),
             voiceDisplayName: voiceDisplayName(res.voice),
             speed: res.effectiveSpeed,
+            firstGenerationMs: firstRun.generationMs,
+            firstGenerationSeconds,
+            firstRtf:
+              firstRun.result.duration > 0
+                ? firstGenerationSeconds / firstRun.result.duration
+                : 0,
+            warmRunCount: BENCHMARK_WARM_RUNS,
+            warmGenerationMs: measuredRuns.map(run => run.generationMs),
+            warmGenerationSeconds,
+            warmRtf,
+            warmP50GenerationMs,
+            warmP50GenerationSeconds: warmP50GenerationMs / 1000,
+            warmP95GenerationMs,
+            warmP95GenerationSeconds: warmP95GenerationMs / 1000,
+            warmP50Rtf:
+              durationSeconds > 0
+                ? warmP50GenerationMs / 1000 / durationSeconds
+                : 0,
+            warmP95Rtf:
+              durationSeconds > 0
+                ? warmP95GenerationMs / 1000 / durationSeconds
+                : 0,
             generationMs,
             generationSeconds,
             durationSeconds,
@@ -525,6 +606,32 @@ function withTimeout<T>(
   });
 }
 
+async function measureGeneration(
+  instance: KittenTTS,
+  sampleText: string,
+  voice: KittenVoice,
+  speed: number,
+  timeoutMessage: string,
+): Promise<{result: KittenTTSResult; generationMs: number}> {
+  const generationStartedAt = Date.now();
+  const result = await withTimeout(
+    instance.generate(sampleText, voice, speed),
+    BENCHMARK_MODEL_TIMEOUT_MS,
+    timeoutMessage,
+  );
+  return {
+    result,
+    generationMs: Date.now() - generationStartedAt,
+  };
+}
+
+function percentile(sortedValues: number[], percentileValue: number): number {
+  if (sortedValues.length === 0) return 0;
+  const rank = Math.ceil((percentileValue / 100) * sortedValues.length) - 1;
+  const index = Math.min(sortedValues.length - 1, Math.max(0, rank));
+  return sortedValues[index];
+}
+
 function StatusBanner({state}: {state: AppState}) {
   switch (state.kind) {
     case 'idle':
@@ -655,11 +762,11 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
           <Text style={styles.benchmarkModel}>{row.modelDisplayName}</Text>
           <Text style={styles.benchmarkMetric}>
             {row.status === 'passed'
-              ? `Generate ${((row.generationMs ?? 0) / 1000).toFixed(
-                  2,
-                )}s | Audio ${(row.durationSeconds ?? 0).toFixed(2)}s | RTF ${(
-                  row.rtf ?? 0
-                ).toFixed(3)}`
+              ? `Best ${((row.generationMs ?? 0) / 1000).toFixed(2)}s | p50 ${(
+                  (row.warmP50GenerationMs ?? 0) / 1000
+                ).toFixed(2)}s | p95 ${(
+                  (row.warmP95GenerationMs ?? 0) / 1000
+                ).toFixed(2)}s | RTF ${(row.rtf ?? 0).toFixed(3)}`
               : `Failed | ${row.failedStage}: ${row.errorSummary}`}
           </Text>
         </View>
