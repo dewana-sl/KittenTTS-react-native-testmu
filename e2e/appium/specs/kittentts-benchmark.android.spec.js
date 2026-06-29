@@ -141,9 +141,18 @@ describe("KittenTTS React Native benchmark", () => {
 
     const sampleText = process.env.TESTMU_SAMPLE_TEXT;
     if (sampleText) {
-      await input.click();
-      await input.clearValue();
-      await input.setValue(sampleText);
+      const currentText = await input.getText().catch(() => "");
+      if (currentText !== sampleText) {
+        try {
+          await input.click();
+          await input.clearValue();
+          await input.setValue(sampleText);
+        } catch (error) {
+          console.warn(
+            `[KittenTTS benchmark] Could not override sample text; continuing with the app default. ${error.message}`
+          );
+        }
+      }
     }
 
     const benchmark = await $("~benchmark-button");
