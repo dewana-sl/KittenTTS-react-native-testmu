@@ -67,6 +67,9 @@ type BenchmarkRow = {
   werAudioFormat?: 'wav-base64';
   werAudioSampleRate?: number;
   werAudioBase64?: string;
+  werAudioBase64Length?: number;
+  werAudioChunkCount?: number;
+  werAudioChunkSize?: number;
   parakeetTranscript?: string;
   parakeetWer?: number;
   parakeetWerPercent?: number;
@@ -98,6 +101,7 @@ const MODELS: KittenModel[] = [
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
+const WER_AUDIO_CHUNK_SIZE = 16000;
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -105,6 +109,13 @@ function e2eTextProps(testID: string) {
   }
 
   return {testID};
+}
+
+function automationSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 function makeFailedBenchmarkRow(
@@ -374,6 +385,7 @@ export default function App() {
           const warmRtf = warmGenerationSeconds.map(seconds =>
             durationSeconds > 0 ? seconds / durationSeconds : 0,
           );
+          const wavBase64 = getWavBase64(res);
 
           rows[index] = {
             model: String(model),
@@ -414,7 +426,12 @@ export default function App() {
             werReferenceText: sampleText,
             werAudioFormat: 'wav-base64',
             werAudioSampleRate: res.sampleRate,
-            werAudioBase64: getWavBase64(res),
+            werAudioBase64: wavBase64,
+            werAudioBase64Length: wavBase64?.length,
+            werAudioChunkCount: wavBase64
+              ? Math.ceil(wavBase64.length / WER_AUDIO_CHUNK_SIZE)
+              : 0,
+            werAudioChunkSize: WER_AUDIO_CHUNK_SIZE,
             parakeetStatus: 'pending',
           };
           publishReport();
@@ -745,7 +762,6 @@ function StatusBanner({state}: {state: AppState}) {
 }
 
 function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
-  const automationReport = JSON.stringify(report);
   const displayReport = JSON.stringify(stripBenchmarkAudio(report));
 
   return (
@@ -794,12 +810,39 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
         selectable>
         {displayReport}
       </Text>
-      <Text
-        style={styles.benchmarkJsonAutomation}
-        {...e2eTextProps('benchmark-json')}
-        selectable>
-        {automationReport}
-      </Text>
+      <BenchmarkAudioChunks report={report} />
+    </View>
+  );
+}
+
+function BenchmarkAudioChunks({report}: {report: BenchmarkReport}) {
+  return (
+    <View style={styles.benchmarkAudioChunks} pointerEvents="none">
+      {report.rows.flatMap(row => {
+        if (row.status !== 'passed' || !row.werAudioBase64) {
+          return [];
+        }
+
+        const rowSlug = automationSlug(row.model);
+        const chunks = [];
+        for (
+          let offset = 0, index = 0;
+          offset < row.werAudioBase64.length;
+          offset += WER_AUDIO_CHUNK_SIZE, index += 1
+        ) {
+          chunks.push(
+            <Text
+              key={`${row.model}-${index}`}
+              style={styles.benchmarkAudioChunk}
+              {...e2eTextProps(`benchmark-audio-${rowSlug}-${index}`)}
+              selectable>
+              {row.werAudioBase64.slice(offset, offset + WER_AUDIO_CHUNK_SIZE)}
+            </Text>,
+          );
+        }
+
+        return chunks;
+      })}
     </View>
   );
 }
@@ -1095,10 +1138,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 12,
   },
-  benchmarkJsonAutomation: {
-    color: 'transparent',
-    fontSize: 1,
+  benchmarkAudioChunks: {
     marginTop: 1,
+  },
+  benchmarkAudioChunk: {
+    color: '#FFFFFF',
+    fontSize: 1,
+    height: 1,
     opacity: 0.01,
   },
 });

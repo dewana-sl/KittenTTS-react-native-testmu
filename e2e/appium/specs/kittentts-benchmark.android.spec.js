@@ -21,6 +21,10 @@ function slugify(value) {
     .replace(/^-|-$/g, "");
 }
 
+function automationSlug(value) {
+  return slugify(value);
+}
+
 function parseBenchmarkJson(rawText) {
   const jsonStart = rawText.indexOf("{");
   const jsonEnd = rawText.lastIndexOf("}");
@@ -45,15 +49,81 @@ async function readBenchmarkReport(accessibilityId) {
   }
 }
 
-async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
-  if (includeAudio) {
-    return (
-      (await readBenchmarkReport("benchmark-json")) ||
-      (await readBenchmarkReport("benchmark-json-display"))
-    );
+async function readElementText(accessibilityId) {
+  const element = await $(`~${accessibilityId}`);
+  const candidates = [
+    await element.getText().catch(() => ""),
+    await element.getAttribute("text").catch(() => ""),
+    await element.getAttribute("label").catch(() => ""),
+    await element.getAttribute("value").catch(() => ""),
+  ];
+
+  return (
+    candidates.find((candidate) => {
+      const text = String(candidate || "");
+      return text.length > 0 && text !== accessibilityId;
+    }) || ""
+  );
+}
+
+async function attachWerAudioChunks(report) {
+  const rows = [];
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      rows.push(row);
+      continue;
+    }
+
+    const chunkCount = Number(row.werAudioChunkCount || 0);
+    if (chunkCount <= 0) {
+      rows.push(row);
+      continue;
+    }
+
+    const rowSlug = automationSlug(row.model);
+    const chunks = [];
+    for (let index = 0; index < chunkCount; index += 1) {
+      const accessibilityId = `benchmark-audio-${rowSlug}-${index}`;
+      const chunk = await readElementText(accessibilityId);
+      if (!chunk) {
+        throw new Error(
+          `Missing WER audio chunk ${index + 1}/${chunkCount} for ${row.model} (${accessibilityId}).`
+        );
+      }
+      chunks.push(chunk);
+    }
+
+    const werAudioBase64 = chunks.join("");
+    if (
+      Number.isFinite(row.werAudioBase64Length) &&
+      werAudioBase64.length !== row.werAudioBase64Length
+    ) {
+      throw new Error(
+        `WER audio length mismatch for ${row.model}: expected ${row.werAudioBase64Length}, got ${werAudioBase64.length}.`
+      );
+    }
+
+    rows.push({
+      ...row,
+      werAudioBase64,
+    });
   }
 
-  return readBenchmarkReport("benchmark-json-display");
+  return {
+    ...report,
+    rows,
+  };
+}
+
+async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
+  const report = await readBenchmarkReport("benchmark-json-display");
+
+  if (!report || !includeAudio) {
+    return report;
+  }
+
+  return attachWerAudioChunks(report);
 }
 
 function markPartialReport(report, timeoutMessage) {
