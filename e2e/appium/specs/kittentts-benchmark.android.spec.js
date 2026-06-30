@@ -48,12 +48,12 @@ async function readBenchmarkReport(accessibilityId) {
 async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
   if (includeAudio) {
     return (
-      (await readBenchmarkReport("benchmark-json-with-audio")) ||
-      (await readBenchmarkReport("benchmark-json"))
+      (await readBenchmarkReport("benchmark-json")) ||
+      (await readBenchmarkReport("benchmark-json-display"))
     );
   }
 
-  return readBenchmarkReport("benchmark-json");
+  return readBenchmarkReport("benchmark-json-display");
 }
 
 function markPartialReport(report, timeoutMessage) {

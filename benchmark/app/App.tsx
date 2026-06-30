@@ -790,13 +790,13 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
       ))}
       <Text
         style={styles.benchmarkJson}
-        {...e2eTextProps('benchmark-json')}
+        {...e2eTextProps('benchmark-json-display')}
         selectable>
         {displayReport}
       </Text>
       <Text
-        style={styles.benchmarkJsonHidden}
-        {...e2eTextProps('benchmark-json-with-audio')}
+        style={styles.benchmarkJsonAutomation}
+        {...e2eTextProps('benchmark-json')}
         selectable>
         {automationReport}
       </Text>
@@ -1095,10 +1095,10 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 12,
   },
-  benchmarkJsonHidden: {
+  benchmarkJsonAutomation: {
     color: 'transparent',
     fontSize: 1,
-    height: 1,
+    marginTop: 1,
     opacity: 0.01,
   },
 });
