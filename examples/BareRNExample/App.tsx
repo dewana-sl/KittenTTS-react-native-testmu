@@ -90,6 +90,14 @@ const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
 
+function e2eTextProps(testID: string) {
+  if (Platform.OS === 'android') {
+    return {testID, accessibilityLabel: testID};
+  }
+
+  return {testID};
+}
+
 function makeFailedBenchmarkRow(
   model: KittenModel,
   failedStage: string,
@@ -645,8 +653,7 @@ function StatusBanner({state}: {state: AppState}) {
           <ActivityIndicator size="small" color="#007AFF" />
           <Text
             style={styles.bannerText}
-            testID="status-label"
-            accessibilityLabel="status-label">
+            {...e2eTextProps('status-label')}>
             Preparing model...
           </Text>
         </View>
@@ -660,8 +667,7 @@ function StatusBanner({state}: {state: AppState}) {
           <ActivityIndicator size="small" color="#007AFF" />
           <Text
             style={styles.bannerText}
-            testID="status-label"
-            accessibilityLabel="status-label">
+            {...e2eTextProps('status-label')}>
             Downloading model... {Math.round(state.progress * 100)}%
           </Text>
         </View>
@@ -675,8 +681,7 @@ function StatusBanner({state}: {state: AppState}) {
           <ActivityIndicator size="small" color="#007AFF" />
           <Text
             style={styles.bannerText}
-            testID="status-label"
-            accessibilityLabel="status-label">
+            {...e2eTextProps('status-label')}>
             Generating speech...
           </Text>
         </View>
@@ -690,8 +695,7 @@ function StatusBanner({state}: {state: AppState}) {
           <ActivityIndicator size="small" color="#007AFF" />
           <Text
             style={styles.bannerText}
-            testID="status-label"
-            accessibilityLabel="status-label">
+            {...e2eTextProps('status-label')}>
             Benchmarking {state.model} ({state.completed + 1}/{state.total})...
           </Text>
         </View>
@@ -705,8 +709,7 @@ function StatusBanner({state}: {state: AppState}) {
           <ActivityIndicator size="small" color="#007AFF" />
           <Text
             style={styles.bannerText}
-            testID="status-label"
-            accessibilityLabel="status-label">
+            {...e2eTextProps('status-label')}>
             Playing...
           </Text>
         </View>
@@ -719,8 +722,7 @@ function StatusBanner({state}: {state: AppState}) {
           accessibilityLabel="error-banner">
           <Text
             style={styles.bannerErrorText}
-            testID="error-message"
-            accessibilityLabel="error-message">
+            {...e2eTextProps('error-message')}>
             {state.message}
           </Text>
         </View>
@@ -739,8 +741,7 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
         <Text style={styles.resultLabel}>Sample Text</Text>
         <Text
           style={[styles.resultValue, styles.resultLongValue]}
-          testID="benchmark-sample-text"
-          accessibilityLabel="benchmark-sample-text">
+          {...e2eTextProps('benchmark-sample-text')}>
           {report.sampleText}
         </Text>
       </View>
@@ -748,8 +749,7 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
         <Text style={styles.resultLabel}>Characters</Text>
         <Text
           style={styles.resultValue}
-          testID="benchmark-char-length"
-          accessibilityLabel="benchmark-char-length">
+          {...e2eTextProps('benchmark-char-length')}>
           {report.characterLength}
         </Text>
       </View>
@@ -773,8 +773,7 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
       ))}
       <Text
         style={styles.benchmarkJson}
-        testID="benchmark-json"
-        accessibilityLabel="benchmark-json"
+        {...e2eTextProps('benchmark-json')}
         selectable>
         {JSON.stringify(report)}
       </Text>
