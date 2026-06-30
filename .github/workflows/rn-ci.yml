@@ -41,6 +41,12 @@ jobs:
           node-version: 20
           cache: npm
 
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: examples/BareRNExample
+
       - id: sdk-pack
         name: Build SDK package tarball
         run: |
@@ -90,6 +96,7 @@ jobs:
             -scheme BasicExample \
             -configuration Release \
             -sdk iphoneos \
+            -destination "generic/platform=iOS" \
             -derivedDataPath "$derived_data" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
@@ -481,6 +488,12 @@ jobs:
         with:
           node-version: 20
           cache: npm
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: examples/BareRNExample
 
       - id: sdk-pack
         name: Build SDK package tarball
