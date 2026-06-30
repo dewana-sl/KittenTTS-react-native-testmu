@@ -122,6 +122,47 @@ jobs:
           name: bare-rn-unsigned-ipa
           path: artifacts/ios/BasicExample-unsigned.ipa
 
+      - name: Prune old TestMu unsigned iOS uploads
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LT_USERNAME" ] || [ -z "$LT_ACCESS_KEY" ]; then
+            echo "LT_USERNAME or LT_ACCESS_KEY is missing."
+            exit 1
+          fi
+
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request GET "https://manual-api.lambdatest.com/app/data?type=ios&level=user")"
+
+          app_ids="$(APP_DATA="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.APP_DATA || "{}");
+          const apps = Array.isArray(response.data) ? response.data : [];
+          const ids = apps
+            .filter((app) => {
+              const name = String(app.name || "");
+              return (
+                name.startsWith("KittenTTS_RN_iOS_UNSIGNED_") ||
+                name.startsWith("KittenTTS_RN_iOS_CI_")
+              );
+            })
+            .map((app) => app.app_id || app.appId || app.id)
+            .filter(Boolean);
+          process.stdout.write(ids.join(","));
+          NODE
+          )"
+
+          if [ -n "$app_ids" ]; then
+            curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+              --location --request DELETE "https://manual-api.lambdatest.com/app/delete" \
+              --header "Content-Type: application/json" \
+              --data-raw "{\"appIds\":\"$app_ids\"}"
+            echo
+          else
+            echo "No old TestMu unsigned iOS uploads to prune."
+          fi
+
       - id: upload-unsigned-ios-app
         name: Upload unsigned IPA to TestMu
         env:
