@@ -28,9 +28,157 @@ jobs:
       - run: npm ci
       - run: npm test
 
+  ios-unsigned-package-test:
+    name: Experimental unsigned iOS IPA on TestMu
+    runs-on: macos-latest
+    needs: sdk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - id: sdk-pack
+        name: Build SDK package tarball
+        run: |
+          npm ci
+          npm run build:ts
+          mkdir -p "$RUNNER_TEMP/kittentts-pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
+          if [ ! -f "$tarball" ]; then
+            echo "SDK tarball was not created."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed SDK tarball: $tarball"
+
+      - name: Install example dependencies from SDK tarball
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
+          node - <<'NODE'
+          const rootPackage = require('../../package.json');
+          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
+          if (installedPackage.version !== rootPackage.version) {
+            throw new Error(
+              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
+            );
+          }
+          console.log(`Using local SDK tarball version ${installedPackage.version}`);
+          NODE
+        working-directory: examples/BareRNExample
+
+      - name: Install CocoaPods
+        run: |
+          bundle install
+          bundle exec pod install
+        working-directory: examples/BareRNExample/ios
+
+      - name: Build unsigned iOS app and package IPA
+        run: |
+          set -euo pipefail
+          derived_data="$RUNNER_TEMP/unsigned-ios-derived-data"
+          package_dir="$RUNNER_TEMP/unsigned-ios-package"
+          ipa_path="$GITHUB_WORKSPACE/artifacts/ios/BasicExample-unsigned.ipa"
+
+          xcodebuild \
+            -workspace ios/BasicExample.xcworkspace \
+            -scheme BasicExample \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+          app_path="$derived_data/Build/Products/Release-iphoneos/BasicExample.app"
+          if [ ! -d "$app_path" ]; then
+            echo "Unsigned .app was not created at $app_path"
+            exit 1
+          fi
+
+          rm -rf "$package_dir"
+          mkdir -p "$package_dir/Payload" "$(dirname "$ipa_path")"
+          cp -R "$app_path" "$package_dir/Payload/"
+          (cd "$package_dir" && zip -qry "$ipa_path" Payload)
+          unzip -l "$ipa_path" | sed -n '1,40p'
+        working-directory: examples/BareRNExample
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bare-rn-unsigned-ipa
+          path: artifacts/ios/BasicExample-unsigned.ipa
+
+      - id: upload-unsigned-ios-app
+        name: Upload unsigned IPA to TestMu
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LT_USERNAME" ] || [ -z "$LT_ACCESS_KEY" ]; then
+            echo "LT_USERNAME or LT_ACCESS_KEY is missing."
+            exit 1
+          fi
+
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS_RN_iOS_UNSIGNED_${GITHUB_RUN_ID}" \
+            --form "appFile=@artifacts/ios/BasicExample-unsigned.ipa")"
+
+          app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.UPLOAD_RESPONSE);
+          const appUrl = response.app_url || response.appUrl || response.app || response.url;
+          if (!appUrl || !String(appUrl).startsWith('lt://')) {
+            throw new Error(`Unable to find lt:// app URL in response: ${JSON.stringify(response)}`);
+          }
+          process.stdout.write(appUrl);
+          NODE
+          )"
+
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+      - name: Install Appium harness
+        run: npm ci
+        working-directory: e2e/appium
+
+      - name: Run TestMu iPhone 14 benchmark with unsigned IPA
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_IOS_APP_URL: ${{ steps.upload-unsigned-ios-app.outputs.app_url }}
+          TESTMU_DEVICE: iPhone 14
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: "16"
+          TESTMU_IOS_DEVICE: iPhone 14
+          TESTMU_IOS_VERSION: "16"
+          TESTMU_REAL_DEVICE: true
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+        run: |
+          mkdir -p reports
+          set -o pipefail
+          timeout 15m npm run test:ios 2>&1 | tee reports/appium-output.log
+        working-directory: e2e/appium
+
+      - name: Upload unsigned iOS benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-ios-unsigned-iphone-14
+          path: e2e/appium/reports/*
+          if-no-files-found: warn
+
   android-example:
     name: Bare RN Android release APK
     runs-on: ubuntu-latest
+    needs: ios-unsigned-package-test
 
     steps:
       - uses: actions/checkout@v4
