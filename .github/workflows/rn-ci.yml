@@ -1,0 +1,547 @@
+name: RN CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sdk:
+    name: SDK typecheck and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  ios-unsigned-package-test:
+    name: Benchmark app iOS on TestMu
+    runs-on: macos-latest
+    needs: sdk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.1'
+          bundler-cache: true
+          working-directory: benchmark/app
+
+      - id: sdk-pack
+        name: Build SDK package tarball
+        run: |
+          npm ci
+          npm run build:ts
+          mkdir -p "$RUNNER_TEMP/kittentts-pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
+          if [ ! -f "$tarball" ]; then
+            echo "SDK tarball was not created."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed SDK tarball: $tarball"
+
+      - name: Install benchmark app dependencies from SDK tarball
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
+          node - <<'NODE'
+          const rootPackage = require('../../package.json');
+          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
+          if (installedPackage.version !== rootPackage.version) {
+            throw new Error(
+              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
+            );
+          }
+          console.log(`Using local SDK tarball version ${installedPackage.version}`);
+          NODE
+        working-directory: benchmark/app
+
+      - name: Install CocoaPods
+        run: |
+          bundle install
+          bundle exec pod install
+        working-directory: benchmark/app/ios
+
+      - name: Build unsigned iOS app and package IPA
+        run: |
+          set -euo pipefail
+          derived_data="$RUNNER_TEMP/unsigned-ios-derived-data"
+          package_dir="$RUNNER_TEMP/unsigned-ios-package"
+          ipa_path="$GITHUB_WORKSPACE/artifacts/ios/BasicExample-unsigned.ipa"
+
+          xcodebuild \
+            -workspace ios/BasicExample.xcworkspace \
+            -scheme BasicExample \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$derived_data" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+          app_path="$derived_data/Build/Products/Release-iphoneos/BasicExample.app"
+          if [ ! -d "$app_path" ]; then
+            echo "Unsigned .app was not created at $app_path"
+            exit 1
+          fi
+
+          rm -rf "$package_dir"
+          mkdir -p "$package_dir/Payload" "$(dirname "$ipa_path")"
+          cp -R "$app_path" "$package_dir/Payload/"
+          (cd "$package_dir" && zip -qry "$ipa_path" Payload)
+          unzip -l "$ipa_path" | sed -n '1,40p'
+        working-directory: benchmark/app
+
+      - name: Upload unsigned IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-rn-unsigned-ipa
+          path: artifacts/ios/BasicExample-unsigned.ipa
+
+      - name: Prune old TestMu unsigned iOS uploads
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LT_USERNAME" ] || [ -z "$LT_ACCESS_KEY" ]; then
+            echo "LT_USERNAME or LT_ACCESS_KEY is missing."
+            exit 1
+          fi
+
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request GET "https://manual-api.lambdatest.com/app/data?type=ios&level=user")"
+
+          app_ids="$(APP_DATA="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.APP_DATA || "{}");
+          const apps = Array.isArray(response.data) ? response.data : [];
+          const ids = apps
+            .filter((app) => {
+              const name = String(app.name || "");
+              return (
+                name.startsWith("KittenTTS_RN_iOS_UNSIGNED_") ||
+                name.startsWith("KittenTTS_RN_iOS_CI_")
+              );
+            })
+            .map((app) => app.app_id || app.appId || app.id)
+            .filter(Boolean);
+          process.stdout.write(ids.join(","));
+          NODE
+          )"
+
+          if [ -n "$app_ids" ]; then
+            curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+              --location --request DELETE "https://manual-api.lambdatest.com/app/delete" \
+              --header "Content-Type: application/json" \
+              --data-raw "{\"appIds\":\"$app_ids\"}"
+            echo
+          else
+            echo "No old TestMu unsigned iOS uploads to prune."
+          fi
+
+      - id: upload-unsigned-ios-app
+        name: Upload unsigned IPA to TestMu
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$LT_USERNAME" ] || [ -z "$LT_ACCESS_KEY" ]; then
+            echo "LT_USERNAME or LT_ACCESS_KEY is missing."
+            exit 1
+          fi
+
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS_RN_iOS_UNSIGNED_${GITHUB_RUN_ID}" \
+            --form "appFile=@artifacts/ios/BasicExample-unsigned.ipa")"
+
+          app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.UPLOAD_RESPONSE);
+          const appUrl = response.app_url || response.appUrl || response.app || response.url;
+          if (!appUrl || !String(appUrl).startsWith('lt://')) {
+            throw new Error(`Unable to find lt:// app URL in response: ${JSON.stringify(response)}`);
+          }
+          process.stdout.write(appUrl);
+          NODE
+          )"
+
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+      - name: Install Appium harness
+        run: npm ci
+        working-directory: e2e/appium
+
+      - name: Run TestMu iPhone 14 benchmark with unsigned IPA
+        timeout-minutes: 17
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_IOS_APP_URL: ${{ steps.upload-unsigned-ios-app.outputs.app_url }}
+          TESTMU_DEVICE: iPhone 14
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: "16"
+          TESTMU_IOS_DEVICE: iPhone 14
+          TESTMU_IOS_VERSION: "16"
+          TESTMU_REAL_DEVICE: true
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+        run: |
+          mkdir -p reports
+          set -o pipefail
+          npm run test:ios 2>&1 | tee reports/appium-output.log
+        working-directory: e2e/appium
+
+      - name: Upload unsigned iOS benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-ios-unsigned-iphone-14
+          path: e2e/appium/reports/*
+          if-no-files-found: warn
+
+  android-example:
+    name: Benchmark app Android release APK
+    runs-on: ubuntu-latest
+    needs: ios-unsigned-package-test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - id: sdk-pack
+        name: Build SDK package tarball
+        run: |
+          npm ci
+          npm run build:ts
+          mkdir -p "$RUNNER_TEMP/kittentts-pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
+          if [ ! -f "$tarball" ]; then
+            echo "SDK tarball was not created."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed SDK tarball: $tarball"
+
+      - name: Install benchmark app dependencies from SDK tarball
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
+          node - <<'NODE'
+          const rootPackage = require('../../package.json');
+          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
+          if (installedPackage.version !== rootPackage.version) {
+            throw new Error(
+              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
+            );
+          }
+          console.log(`Using local SDK tarball version ${installedPackage.version}`);
+          NODE
+        working-directory: benchmark/app
+
+      - run: ./gradlew assembleRelease
+        working-directory: benchmark/app/android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-rn-release-apk
+          path: benchmark/app/android/app/build/outputs/apk/release/app-release.apk
+
+  upload-testmu-app:
+    name: Upload APK to TestMu
+    runs-on: ubuntu-latest
+    needs: android-example
+    outputs:
+      enabled: ${{ steps.testmu-creds.outputs.present }}
+      app_url: ${{ steps.upload-app.outputs.app_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: testmu-creds
+        name: Check TestMu credentials
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          if [ -n "$LT_USERNAME" ] && [ -n "$LT_ACCESS_KEY" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping TestMu smoke because LT_USERNAME or LT_ACCESS_KEY is not configured."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.testmu-creds.outputs.present == 'true'
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        if: steps.testmu-creds.outputs.present == 'true'
+        with:
+          name: benchmark-rn-release-apk
+          path: artifacts/android
+
+      - name: Prune old TestMu CI uploads
+        if: steps.testmu-creds.outputs.present == 'true'
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request GET "https://manual-api.lambdatest.com/app/data?type=android&level=user")"
+
+          app_ids="$(APP_DATA="$response" node - <<'NODE'
+          const keepNames = new Set(["KittenTTS_RN_Release_28200662906"]);
+          const response = JSON.parse(process.env.APP_DATA || "{}");
+          const apps = Array.isArray(response.data) ? response.data : [];
+          const ids = apps
+            .filter((app) => {
+              const name = String(app.name || "");
+              return (
+                name.startsWith("KittenTTS_RN_CI_") ||
+                (name.startsWith("KittenTTS_RN_Release_") && !keepNames.has(name))
+              );
+            })
+            .map((app) => app.app_id || app.appId || app.id)
+            .filter(Boolean);
+          process.stdout.write(ids.join(","));
+          NODE
+          )"
+
+          if [ -n "$app_ids" ]; then
+            curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+              --location --request DELETE "https://manual-api.lambdatest.com/app/delete" \
+              --header "Content-Type: application/json" \
+              --data-raw "{\"appIds\":\"$app_ids\"}"
+            echo
+          else
+            echo "No old TestMu CI uploads to prune."
+          fi
+
+      - id: upload-app
+        name: Upload APK to TestMu
+        if: steps.testmu-creds.outputs.present == 'true'
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS_RN_CI_${GITHUB_RUN_ID}" \
+            --form "appFile=@artifacts/android/app-release.apk")"
+
+          app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
+          const response = JSON.parse(process.env.UPLOAD_RESPONSE);
+          const appUrl = response.app_url || response.appUrl || response.app || response.url;
+          if (!appUrl || !String(appUrl).startsWith('lt://')) {
+            throw new Error(`Unable to find lt:// app URL in response: ${JSON.stringify(response)}`);
+          }
+          process.stdout.write(appUrl);
+          NODE
+          )"
+
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+  testmu-android-benchmark:
+    name: TestMu Android benchmark (${{ matrix.device }})
+    runs-on: ubuntu-latest
+    needs: upload-testmu-app
+    if: needs.upload-testmu-app.outputs.enabled == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - slug: pixel-5
+            device: Pixel 5
+            version: "12"
+          - slug: galaxy-note10
+            device: Galaxy Note10
+            version: "12"
+          - slug: pixel-8
+            device: Pixel 8
+            version: "14"
+          - slug: xiaomi-redmi-note-8
+            device: Xiaomi Redmi Note 8
+            version: "10"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Appium harness
+        run: npm ci
+        working-directory: e2e/appium
+
+      - name: Run TestMu Android benchmark
+        id: run-benchmark
+        continue-on-error: true
+        timeout-minutes: 17
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_APP_URL: ${{ needs.upload-testmu-app.outputs.app_url }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
+          TESTMU_ANDROID_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+        run: |
+          mkdir -p reports
+          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
+          set +e
+          set -o pipefail
+          timeout 15m npm run test:android 2>&1 | tee reports/appium-output.log
+          status="${PIPESTATUS[0]}"
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
+          if [ "$status" -eq 124 ]; then
+            echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+          fi
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        working-directory: e2e/appium
+
+      - name: Write device failure report
+        if: steps.run-benchmark.outcome == 'failure'
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-benchmark.outputs.total_runtime_seconds }}
+        run: |
+          node scripts/write-failure-report.js
+        working-directory: e2e/appium
+
+      - name: Upload device benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-${{ matrix.slug }}
+          path: e2e/appium/reports/*.json
+          if-no-files-found: warn
+
+  testmu-benchmark-report:
+    name: TestMu benchmark report
+    runs-on: ubuntu-latest
+    needs:
+      - ios-unsigned-package-test
+      - upload-testmu-app
+      - testmu-android-benchmark
+    if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: testmu-benchmark-*
+          path: benchmark-results
+          merge-multiple: true
+
+      - name: Build benchmark report
+        env:
+          GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node e2e/appium/scripts/build-benchmark-report.js benchmark-results benchmark-report
+
+      - name: Upload combined benchmark report
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-report
+          path: benchmark-report/*
+
+      - name: Add report to job summary
+        run: cat benchmark-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment benchmark report on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const sha = context.payload.pull_request.head.sha;
+            const marker = `<!-- kittentts-testmu-benchmark-report:${sha} -->`;
+            const report = fs.readFileSync('benchmark-report/pr-comment.md', 'utf8');
+            const body = `${marker}\n${report}`;
+            const {owner, repo} = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+            const previous = comments.data.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker),
+            );
+
+            if (previous) {
+              core.info(`Updating benchmark report comment for commit ${sha}.`);
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              core.info(`Creating benchmark report comment for commit ${sha}.`);
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+            }
