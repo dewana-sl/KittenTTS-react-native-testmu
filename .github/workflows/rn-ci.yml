@@ -209,6 +209,7 @@ jobs:
           TESTMU_IOS_VERSION: "16"
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_REQUIRE_WER_AUDIO: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: |
           mkdir -p reports
@@ -428,6 +429,7 @@ jobs:
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
+          TESTMU_REQUIRE_WER_AUDIO: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
         run: |
           mkdir -p reports
@@ -491,6 +493,18 @@ jobs:
           pattern: testmu-benchmark-*
           path: benchmark-results
           merge-multiple: true
+
+      - name: Annotate WER with Parakeet
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          if [ -n "$NVIDIA_API_KEY" ]; then
+            python3 -m pip install --upgrade pip
+            python3 -m pip install nvidia-riva-client==2.26.0
+          else
+            echo "NVIDIA_API_KEY is not configured; Parakeet WER rows will be marked skipped."
+          fi
+          python3 e2e/appium/scripts/annotate-wer-with-parakeet.py benchmark-results --strip-audio
 
       - name: Build benchmark report
         env:

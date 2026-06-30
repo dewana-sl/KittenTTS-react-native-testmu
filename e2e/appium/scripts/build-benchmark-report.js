@@ -78,6 +78,29 @@ function formatLogLink(report) {
   return escapeMarkdown(report.errorDetails || "Open the device job logs.");
 }
 
+function formatWer(row) {
+  if (
+    row.parakeetStatus === "passed" &&
+    Number.isFinite(row.parakeetWerPercent)
+  ) {
+    return `${formatNumber(row.parakeetWerPercent, 2)}%`;
+  }
+
+  if (row.parakeetStatus) {
+    return escapeMarkdown(row.parakeetStatus);
+  }
+
+  return "";
+}
+
+function formatTranscriptOrWerError(row) {
+  if (row.parakeetStatus === "passed") {
+    return escapeMarkdown(row.parakeetTranscript || "");
+  }
+
+  return escapeMarkdown(row.parakeetErrorSummary || "");
+}
+
 function buildDeviceTable(report) {
   if (report.status === "failed") {
     return [
@@ -100,8 +123,8 @@ function buildDeviceTable(report) {
     "",
     `Total run time: ${formatTotalRuntime(report)}`,
     "",
-    "| Model | Status | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Audio (s) | Samples | Sample hash / Error |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+    "| Model | Status | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Parakeet WER | Transcript / Error | Audio (s) | Samples | Sample hash / Error |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | --- |",
   ];
 
   for (const row of report.rows || []) {
@@ -109,7 +132,7 @@ function buildDeviceTable(report) {
       lines.push(
         `| ${escapeMarkdown(
           row.modelDisplayName || row.model
-        )} | Failed |  |  |  |  |  |  |  |  |  | ${escapeMarkdown(
+        )} | Failed |  |  |  |  |  |  |  |  |  |  |  | ${escapeMarkdown(
           `${row.failedStage || "Benchmark"}: ${
             row.errorSummary || "Unknown model failure"
           }`
@@ -129,6 +152,8 @@ function buildDeviceTable(report) {
         row.rtf
       )} | ${formatNumber(row.warmP50Rtf)} | ${formatNumber(
         row.warmP95Rtf
+      )} | ${formatWer(row)} | ${formatTranscriptOrWerError(
+        row
       )} | ${formatNumber(row.durationSeconds)} | ${Number(
         row.sampleCount || 0
       ).toLocaleString("en-US")} | \`${escapeMarkdown(row.sampleHash)}\` |`
@@ -176,6 +201,7 @@ function buildSummary(reports) {
     `- Devices completed: ${completedReports.length}`,
     `- Devices partial: ${partialReports.length}`,
     `- Devices failed: ${failedReports.length}`,
+    `- Parakeet WER: ${summarizeParakeetWer(reports)}`,
     `- GitHub run: ${
       process.env.GITHUB_RUN_ID || first.githubRunId || "local"
     }`,
@@ -188,6 +214,19 @@ function buildSummary(reports) {
   }
 
   return lines.join("\n");
+}
+
+function summarizeParakeetWer(reports) {
+  const rows = reports.flatMap((report) => report.rows || []);
+  const passed = rows.filter((row) => row.parakeetStatus === "passed").length;
+  const skipped = rows.filter((row) => row.parakeetStatus === "skipped").length;
+  const failed = rows.filter((row) => row.parakeetStatus === "failed").length;
+
+  if (passed === 0 && skipped === 0 && failed === 0) {
+    return "unavailable";
+  }
+
+  return `${passed} passed, ${skipped} skipped, ${failed} failed`;
 }
 
 function buildCsv(reports) {
@@ -218,6 +257,12 @@ function buildCsv(reports) {
     "warmRtf",
     "warmP50Rtf",
     "warmP95Rtf",
+    "parakeetStatus",
+    "parakeetModel",
+    "parakeetWer",
+    "parakeetWerPercent",
+    "parakeetTranscript",
+    "parakeetErrorSummary",
     "sampleCount",
     "sampleRate",
     "sampleHash",
@@ -288,6 +333,12 @@ function buildCsv(reports) {
           Array.isArray(row.warmRtf) ? row.warmRtf.join("|") : "",
           row.warmP50Rtf,
           row.warmP95Rtf,
+          row.parakeetStatus || "",
+          row.parakeetModel || "",
+          row.parakeetWer,
+          row.parakeetWerPercent,
+          row.parakeetTranscript || "",
+          row.parakeetErrorSummary || "",
           row.sampleCount,
           row.sampleRate,
           row.sampleHash,

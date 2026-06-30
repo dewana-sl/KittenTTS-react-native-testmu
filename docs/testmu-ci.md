@@ -11,8 +11,9 @@ The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 5. Uploads the APK once to LambdaTest/TestMu.
 6. Runs the same Appium benchmark on four Android real-device configs one after another.
 7. Collects one JSON result per device.
-8. Builds Markdown, CSV, and JSON summary reports.
-9. Posts or updates the benchmark table as a PR comment.
+8. Optionally transcribes each generated WAV with NVIDIA Parakeet and computes word error rate.
+9. Builds Markdown, CSV, and JSON summary reports.
+10. Posts or updates the benchmark table as a PR comment.
 
 KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
@@ -22,8 +23,11 @@ Add these in GitHub under `Settings -> Secrets and variables -> Actions`:
 
 - `LT_USERNAME`
 - `LT_ACCESS_KEY`
+- `NVIDIA_API_KEY` if you want Parakeet WER values
 
 Without these secrets, the SDK tests still run but the TestMu device jobs cannot upload apps.
+
+Without `NVIDIA_API_KEY`, the report still passes and marks Parakeet WER as skipped. This keeps the device benchmark usable in forks while making WER available when the NVIDIA-hosted Parakeet ASR credential is configured.
 
 The Android cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
@@ -71,10 +75,10 @@ The Appium test in `e2e/appium/specs/kittentts-benchmark.android.spec.js` valida
 - `benchmark-button` is enabled.
 - `benchmark-report` appears after all models finish.
 - Every bundled model has one result row: `nano`, `nano-int8`, `micro`, and `mini`.
-- Passed model rows include the first generation timing, five warm measured runs, best warm generation timing, warm p50, warm p95, RTF values, audio duration, sample count, `sampleRate`, and `sampleHash`.
+- Passed model rows include the first generation timing, five warm measured runs, best warm generation timing, warm p50, warm p95, RTF values, audio duration, sample count, `sampleRate`, `sampleHash`, and a WAV payload used by the report job for Parakeet WER.
 - Failed model rows include the model name, failed stage, and error summary.
 
-The test does not judge subjective audio quality.
+The device app does not judge subjective audio quality. The report job can add an objective ASR check by sending the generated WAV to NVIDIA Parakeet, normalizing the transcript and reference text, and computing word error rate.
 
 ## Reports
 
@@ -93,10 +97,12 @@ The final report job combines those files into:
 
 `summary.md` and the PR comment include common run details plus one table per device:
 
-| Model | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Audio (s) | Samples | Sample hash |
-| ----- | ------------: | ------------: | -----------: | -----------: | -------: | -----------: | -----------: | --------: | ------: | ----------- |
+| Model | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Parakeet WER | Transcript / Error | Audio (s) | Samples | Sample hash |
+| ----- | ------------: | ------------: | -----------: | -----------: | -------: | -----------: | -----------: | -----------: | ------------------ | --------: | ------: | ----------- |
 
 For each model, the app does one warm-up generation and then five measured warm generations. The main `Best warm` and `Best RTF` columns use the fastest of those five measured warm runs. The `Warm p50` and `Warm p95` columns show the median-ish and tail latency across the same five warm runs.
+
+Parakeet WER is computed after all device jobs finish. The benchmark app exposes the best warm-run WAV for each passed model in an automation-only JSON field, the report job transcodes that audio to 16 kHz mono WAV, sends it to NVIDIA Parakeet, and strips the audio payload before writing the combined report artifacts.
 
 The PR comment is scoped to the commit SHA. A new pushed commit gets a new benchmark report comment, while a manual rerun of the same commit refreshes only that commit's own report comment.
 

@@ -63,6 +63,15 @@ type BenchmarkRow = {
   sampleCount?: number;
   sampleRate?: number;
   sampleHash?: string;
+  werReferenceText?: string;
+  werAudioFormat?: 'wav-base64';
+  werAudioSampleRate?: number;
+  werAudioBase64?: string;
+  parakeetTranscript?: string;
+  parakeetWer?: number;
+  parakeetWerPercent?: number;
+  parakeetStatus?: 'pending' | 'passed' | 'failed' | 'skipped';
+  parakeetErrorSummary?: string;
   failedStage?: string;
   errorSummary?: string;
 };
@@ -402,6 +411,11 @@ export default function App() {
             sampleCount: res.samples.length,
             sampleRate: res.sampleRate,
             sampleHash: computeSampleHash(res.samples),
+            werReferenceText: sampleText,
+            werAudioFormat: 'wav-base64',
+            werAudioSampleRate: res.sampleRate,
+            werAudioBase64: getWavBase64(res),
+            parakeetStatus: 'pending',
           };
           publishReport();
           lastResult = res;
@@ -731,6 +745,9 @@ function StatusBanner({state}: {state: AppState}) {
 }
 
 function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
+  const automationReport = JSON.stringify(report);
+  const displayReport = JSON.stringify(stripBenchmarkAudio(report));
+
   return (
     <View
       style={styles.resultCard}
@@ -775,10 +792,38 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
         style={styles.benchmarkJson}
         {...e2eTextProps('benchmark-json')}
         selectable>
-        {JSON.stringify(report)}
+        {displayReport}
+      </Text>
+      <Text
+        style={styles.benchmarkJsonHidden}
+        {...e2eTextProps('benchmark-json-with-audio')}
+        selectable>
+        {automationReport}
       </Text>
     </View>
   );
+}
+
+function stripBenchmarkAudio(report: BenchmarkReport): BenchmarkReport {
+  return {
+    ...report,
+    rows: report.rows.map(row => {
+      const {werAudioBase64: _werAudioBase64, ...rest} = row;
+      return rest;
+    }),
+  };
+}
+
+function getWavBase64(result: KittenTTSResult): string | undefined {
+  try {
+    if (typeof result.wavBase64 === 'function') {
+      return result.wavBase64();
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }
 
 function ResultCard({result}: {result: KittenTTSResult}) {
@@ -1049,5 +1094,11 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 10,
     marginTop: 12,
+  },
+  benchmarkJsonHidden: {
+    color: 'transparent',
+    fontSize: 1,
+    height: 1,
+    opacity: 0.01,
   },
 });

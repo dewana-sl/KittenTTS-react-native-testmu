@@ -36,13 +36,24 @@ function hasFinishedBenchmark(report) {
   return Boolean(report?.finishedAt);
 }
 
-async function getBenchmarkReportFromUi() {
+async function readBenchmarkReport(accessibilityId) {
   try {
-    const reportText = await $("~benchmark-json").getText();
+    const reportText = await $(`~${accessibilityId}`).getText();
     return parseBenchmarkJson(reportText);
   } catch {
     return null;
   }
+}
+
+async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
+  if (includeAudio) {
+    return (
+      (await readBenchmarkReport("benchmark-json-with-audio")) ||
+      (await readBenchmarkReport("benchmark-json"))
+    );
+  }
+
+  return readBenchmarkReport("benchmark-json");
 }
 
 function markPartialReport(report, timeoutMessage) {
@@ -198,7 +209,7 @@ async function waitForBenchmarkReport(timeoutMs) {
     if (report) {
       lastReport = report;
       if (hasFinishedBenchmark(report)) {
-        return report;
+        return (await getBenchmarkReportFromUi({ includeAudio: true })) || report;
       }
     }
 
@@ -289,6 +300,13 @@ describe("KittenTTS React Native benchmark", () => {
           throw new Error(
             `Invalid sample hash for ${expectedModel}: ${row.sampleHash}`
           );
+        }
+        if (process.env.TESTMU_REQUIRE_WER_AUDIO === "true") {
+          expect(row.werReferenceText).toBe(report.sampleText);
+          expect(row.werAudioFormat).toBe("wav-base64");
+          expect(row.werAudioSampleRate).toBe(24000);
+          expect(row.werAudioBase64.length).toBeGreaterThan(1000);
+          expect(row.parakeetStatus).toBe("pending");
         }
       } else {
         expect(row.failedStage.length).toBeGreaterThan(0);
