@@ -30,7 +30,7 @@ exports.config = {
         build: process.env.GITHUB_RUN_ID
           ? `KittenTTS RN ${process.env.GITHUB_RUN_ID}`
           : "KittenTTS RN local",
-        name: `BareRNExample Android benchmark - ${
+        name: `KittenTTS benchmark app Android - ${
           process.env.TESTMU_ANDROID_DEVICE || "Pixel 5"
         }`,
         project: "KittenTTS React Native",

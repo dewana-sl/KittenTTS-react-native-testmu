@@ -4,7 +4,7 @@ const platformVersion = process.env.TESTMU_IOS_VERSION || "16";
 
 if (!appUrl) {
   throw new Error(
-    "TESTMU_IOS_APP_URL must be set to a signed lt:// iOS app URL returned by TestMu."
+    "TESTMU_IOS_APP_URL must be set to a lt:// iOS app URL returned by TestMu."
   );
 }
 
@@ -32,7 +32,7 @@ exports.config = {
         build: process.env.GITHUB_RUN_ID
           ? `KittenTTS RN ${process.env.GITHUB_RUN_ID}`
           : "KittenTTS RN local",
-        name: `BareRNExample iOS benchmark - ${deviceName}`,
+        name: `KittenTTS benchmark app iOS - ${deviceName}`,
         project: "KittenTTS React Native",
         isRealMobile: process.env.TESTMU_REAL_DEVICE !== "false",
         console: true,

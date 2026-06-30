@@ -27,57 +27,8 @@ type AppState =
   | {kind: 'preparing'}
   | {kind: 'downloading'; progress: number}
   | {kind: 'generating'}
-  | {
-      kind: 'benchmarking';
-      model: string;
-      completed: number;
-      total: number;
-    }
   | {kind: 'playing'}
   | {kind: 'error'; message: string};
-
-type BenchmarkRow = {
-  model: string;
-  modelDisplayName: string;
-  status: 'passed' | 'failed';
-  voice: string;
-  voiceDisplayName: string;
-  speed: number;
-  firstGenerationMs?: number;
-  firstGenerationSeconds?: number;
-  firstRtf?: number;
-  warmRunCount?: number;
-  warmGenerationMs?: number[];
-  warmGenerationSeconds?: number[];
-  warmRtf?: number[];
-  warmP50GenerationMs?: number;
-  warmP50GenerationSeconds?: number;
-  warmP95GenerationMs?: number;
-  warmP95GenerationSeconds?: number;
-  warmP50Rtf?: number;
-  warmP95Rtf?: number;
-  generationMs?: number;
-  generationSeconds?: number;
-  durationSeconds?: number;
-  rtf?: number;
-  sampleCount?: number;
-  sampleRate?: number;
-  sampleHash?: string;
-  failedStage?: string;
-  errorSummary?: string;
-};
-
-type BenchmarkReport = {
-  schemaVersion: 1;
-  sampleText: string;
-  characterLength: number;
-  voice: string;
-  voiceDisplayName: string;
-  speed: number;
-  startedAt: string;
-  finishedAt: string | null;
-  rows: BenchmarkRow[];
-};
 
 const MODELS: KittenModel[] = [
   KittenModel.Nano,
@@ -87,35 +38,6 @@ const MODELS: KittenModel[] = [
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
-const BENCHMARK_WARM_RUNS = 5;
-
-function e2eTextProps(testID: string) {
-  if (Platform.OS === 'android') {
-    return {testID, accessibilityLabel: testID};
-  }
-
-  return {testID};
-}
-
-function makeFailedBenchmarkRow(
-  model: KittenModel,
-  failedStage: string,
-  errorSummary: string,
-  voice: KittenVoice,
-  speed: number,
-): BenchmarkRow {
-  return {
-    model: String(model),
-    modelDisplayName: modelDisplayName(model),
-    status: 'failed',
-    voice: String(voice),
-    voiceDisplayName: voiceDisplayName(voice),
-    speed,
-    failedStage,
-    errorSummary,
-  };
-}
 
 export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);
@@ -129,54 +51,50 @@ export default function App() {
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);
   const [selectedSpeed, setSelectedSpeed] = useState(1.0);
   const [result, setResult] = useState<KittenTTSResult | null>(null);
-  const [benchmarkReport, setBenchmarkReport] =
-    useState<BenchmarkReport | null>(null);
 
   const isWorking =
     state.kind === 'preparing' ||
     state.kind === 'downloading' ||
     state.kind === 'generating' ||
-    state.kind === 'benchmarking' ||
     state.kind === 'playing';
 
-  const initTTS = useCallback(async (model: KittenModel) => {
-    try {
-      await ttsRef.current?.dispose();
-      setState({kind: 'preparing'});
-      setResult(null);
-      setBenchmarkReport(null);
+  const initTTS = useCallback(
+    async (model: KittenModel) => {
+      try {
+        await ttsRef.current?.dispose();
+        setState({kind: 'preparing'});
+        setResult(null);
 
-      const instance = await KittenTTS.create(
-        {model, player: createRNSoundPlayer(Sound)},
-        (progress, info) => {
-          if (mountedRef.current && info?.stage === 'downloading') {
-            setState({
-              kind: 'downloading',
-              progress,
-            });
-          }
-        },
-      );
+        const instance = await KittenTTS.create(
+          {model, player: createRNSoundPlayer(Sound)},
+          (progress, info) => {
+            if (mountedRef.current && info?.stage === 'downloading') {
+              setState({
+                kind: 'downloading',
+                progress,
+              });
+            }
+          },
+        );
 
-      if (!mountedRef.current) {
-        if (!__DEV__) await instance.dispose();
-        return;
+        if (!mountedRef.current) {
+          if (!__DEV__) await instance.dispose();
+          return;
+        }
+
+        ttsRef.current = instance;
+        setTts(instance);
+        setState({kind: 'idle'});
+      } catch (error: unknown) {
+        ttsRef.current = null;
+        if (mountedRef.current) {
+          setTts(null);
+          setState({kind: 'error', message: getErrorMessage(error, 'Init failed')});
+        }
       }
-
-      ttsRef.current = instance;
-      setTts(instance);
-      setState({kind: 'idle'});
-    } catch (error: unknown) {
-      ttsRef.current = null;
-      if (mountedRef.current) {
-        setTts(null);
-        setState({
-          kind: 'error',
-          message: getErrorMessage(error, 'Init failed'),
-        });
-      }
-    }
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -199,15 +117,11 @@ export default function App() {
     }
     try {
       setState({kind: 'generating'});
-      setBenchmarkReport(null);
       const res = await tts.generate(inputText, selectedVoice, selectedSpeed);
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({
-        kind: 'error',
-        message: getErrorMessage(error, 'Generation failed'),
-      });
+      setState({kind: 'error', message: getErrorMessage(error, 'Generation failed')});
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
 
@@ -217,220 +131,13 @@ export default function App() {
     }
     try {
       setState({kind: 'playing'});
-      setBenchmarkReport(null);
       const res = await tts.speak(inputText, selectedVoice, selectedSpeed);
       setResult(res);
       setState({kind: 'idle'});
     } catch (error: unknown) {
-      setState({
-        kind: 'error',
-        message: getErrorMessage(error, 'Playback failed'),
-      });
+      setState({kind: 'error', message: getErrorMessage(error, 'Playback failed')});
     }
   }, [tts, inputText, selectedVoice, selectedSpeed]);
-
-  const handleBenchmark = useCallback(async () => {
-    const sampleText = inputText.trim();
-
-    if (!sampleText || !ttsRef.current) {
-      return;
-    }
-
-    let lastResult: KittenTTSResult | null = null;
-
-    try {
-      setBenchmarkReport(null);
-      setResult(null);
-      const startedAt = new Date().toISOString();
-      const rows = MODELS.map(model =>
-        makeFailedBenchmarkRow(
-          model,
-          `Benchmark ${modelDisplayName(model)}`,
-          'Benchmark did not run before the device session ended.',
-          selectedVoice,
-          selectedSpeed,
-        ),
-      );
-      const publishReport = (finishedAt: string | null = null) => {
-        setBenchmarkReport({
-          schemaVersion: 1,
-          sampleText,
-          characterLength: Array.from(sampleText).length,
-          voice: String(selectedVoice),
-          voiceDisplayName: voiceDisplayName(selectedVoice),
-          speed: selectedSpeed,
-          startedAt,
-          finishedAt,
-          rows: [...rows],
-        });
-      };
-
-      publishReport();
-
-      for (let index = 0; index < MODELS.length; index += 1) {
-        const model = MODELS[index];
-        rows[index] = makeFailedBenchmarkRow(
-          model,
-          `Benchmark ${modelDisplayName(model)}`,
-          'Benchmark started but did not finish before the device session ended.',
-          selectedVoice,
-          selectedSpeed,
-        );
-        publishReport();
-        setState({
-          kind: 'benchmarking',
-          model: modelDisplayName(model),
-          completed: index,
-          total: MODELS.length,
-        });
-
-        const existingInstance =
-          model === selectedModel ? ttsRef.current : null;
-        let instance: KittenTTS | null = null;
-
-        try {
-          instance =
-            existingInstance ??
-            (await withTimeout(
-              KittenTTS.create(
-                {model, player: createRNSoundPlayer(Sound)},
-                (progress, info) => {
-                  if (mountedRef.current && info?.stage === 'downloading') {
-                    setState({
-                      kind: 'benchmarking',
-                      model: `${modelDisplayName(model)} ${Math.round(
-                        progress * 100,
-                      )}%`,
-                      completed: index,
-                      total: MODELS.length,
-                    });
-                  }
-                },
-              ),
-              BENCHMARK_MODEL_TIMEOUT_MS,
-              `Timed out preparing ${modelDisplayName(model)}`,
-            ));
-
-          const firstRun = await measureGeneration(
-            instance,
-            sampleText,
-            selectedVoice,
-            selectedSpeed,
-            `Timed out warming ${modelDisplayName(model)}`,
-          );
-
-          const measuredRuns: Array<{
-            result: KittenTTSResult;
-            generationMs: number;
-          }> = [];
-
-          for (let run = 0; run < BENCHMARK_WARM_RUNS; run += 1) {
-            setState({
-              kind: 'benchmarking',
-              model: `${modelDisplayName(model)} run ${
-                run + 1
-              }/${BENCHMARK_WARM_RUNS}`,
-              completed: index,
-              total: MODELS.length,
-            });
-            measuredRuns.push(
-              await measureGeneration(
-                instance,
-                sampleText,
-                selectedVoice,
-                selectedSpeed,
-                `Timed out generating ${modelDisplayName(model)} warm run ${
-                  run + 1
-                }/${BENCHMARK_WARM_RUNS}`,
-              ),
-            );
-          }
-
-          const sortedWarmMs = measuredRuns
-            .map(run => run.generationMs)
-            .sort((a, b) => a - b);
-          const bestRun = measuredRuns.reduce((best, candidate) =>
-            candidate.generationMs < best.generationMs ? candidate : best,
-          );
-          const res = bestRun.result;
-          const generationMs = bestRun.generationMs;
-          const firstGenerationSeconds = firstRun.generationMs / 1000;
-          const generationSeconds = generationMs / 1000;
-          const durationSeconds = res.duration;
-          const warmP50GenerationMs = percentile(sortedWarmMs, 50);
-          const warmP95GenerationMs = percentile(sortedWarmMs, 95);
-          const warmGenerationSeconds = measuredRuns.map(
-            run => run.generationMs / 1000,
-          );
-          const warmRtf = warmGenerationSeconds.map(seconds =>
-            durationSeconds > 0 ? seconds / durationSeconds : 0,
-          );
-
-          rows[index] = {
-            model: String(model),
-            modelDisplayName: modelDisplayName(model),
-            status: 'passed',
-            voice: String(res.voice),
-            voiceDisplayName: voiceDisplayName(res.voice),
-            speed: res.effectiveSpeed,
-            firstGenerationMs: firstRun.generationMs,
-            firstGenerationSeconds,
-            firstRtf:
-              firstRun.result.duration > 0
-                ? firstGenerationSeconds / firstRun.result.duration
-                : 0,
-            warmRunCount: BENCHMARK_WARM_RUNS,
-            warmGenerationMs: measuredRuns.map(run => run.generationMs),
-            warmGenerationSeconds,
-            warmRtf,
-            warmP50GenerationMs,
-            warmP50GenerationSeconds: warmP50GenerationMs / 1000,
-            warmP95GenerationMs,
-            warmP95GenerationSeconds: warmP95GenerationMs / 1000,
-            warmP50Rtf:
-              durationSeconds > 0
-                ? warmP50GenerationMs / 1000 / durationSeconds
-                : 0,
-            warmP95Rtf:
-              durationSeconds > 0
-                ? warmP95GenerationMs / 1000 / durationSeconds
-                : 0,
-            generationMs,
-            generationSeconds,
-            durationSeconds,
-            rtf: durationSeconds > 0 ? generationSeconds / durationSeconds : 0,
-            sampleCount: res.samples.length,
-            sampleRate: res.sampleRate,
-            sampleHash: computeSampleHash(res.samples),
-          };
-          publishReport();
-          lastResult = res;
-        } catch (error: unknown) {
-          rows[index] = makeFailedBenchmarkRow(
-            model,
-            `Benchmark ${modelDisplayName(model)}`,
-            getErrorMessage(error, 'Model benchmark failed'),
-            selectedVoice,
-            selectedSpeed,
-          );
-          publishReport();
-        } finally {
-          if (!existingInstance && instance) {
-            await instance.dispose();
-          }
-        }
-      }
-
-      setResult(lastResult);
-      publishReport(new Date().toISOString());
-      setState({kind: 'idle'});
-    } catch (error: unknown) {
-      setState({
-        kind: 'error',
-        message: getErrorMessage(error, 'Benchmark failed'),
-      });
-    }
-  }, [inputText, selectedModel, selectedSpeed, selectedVoice]);
 
   const handleModelChange = useCallback(
     (model: KittenModel) => {
@@ -447,14 +154,11 @@ export default function App() {
         <Text style={styles.subtitle}>On-Device Text-to-Speech</Text>
 
         <StatusBanner state={state} />
-        {benchmarkReport && <BenchmarkReportCard report={benchmarkReport} />}
 
         {/* Text Input */}
         <View style={styles.section}>
           <Text style={styles.label}>Text</Text>
           <TextInput
-            testID="tts-input"
-            accessibilityLabel="tts-input"
             style={styles.textInput}
             value={inputText}
             onChangeText={setInputText}
@@ -544,8 +248,6 @@ export default function App() {
         {/* Action Buttons */}
         <View style={styles.buttonRow}>
           <TouchableOpacity
-            testID="generate-button"
-            accessibilityLabel="generate-button"
             style={[
               styles.button,
               styles.buttonPrimary,
@@ -557,8 +259,6 @@ export default function App() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            testID="speak-button"
-            accessibilityLabel="speak-button"
             style={[
               styles.button,
               styles.buttonSecondary,
@@ -569,19 +269,6 @@ export default function App() {
             <Text style={styles.buttonSecondaryText}>Speak</Text>
           </TouchableOpacity>
         </View>
-
-        <TouchableOpacity
-          testID="benchmark-button"
-          accessibilityLabel="benchmark-button"
-          style={[
-            styles.button,
-            styles.buttonBenchmark,
-            (isWorking || !inputText.trim() || !tts) && styles.buttonDisabled,
-          ]}
-          onPress={handleBenchmark}
-          disabled={isWorking || !inputText.trim() || !tts}>
-          <Text style={styles.buttonBenchmarkText}>Benchmark All Models</Text>
-        </TouchableOpacity>
 
         {/* Result Card */}
         {result && <ResultCard result={result} />}
@@ -594,259 +281,77 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function withTimeout<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-  message: string,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise.then(
-      value => {
-        clearTimeout(timeout);
-        resolve(value);
-      },
-      error => {
-        clearTimeout(timeout);
-        reject(error);
-      },
-    );
-  });
-}
-
-async function measureGeneration(
-  instance: KittenTTS,
-  sampleText: string,
-  voice: KittenVoice,
-  speed: number,
-  timeoutMessage: string,
-): Promise<{result: KittenTTSResult; generationMs: number}> {
-  const generationStartedAt = Date.now();
-  const result = await withTimeout(
-    instance.generate(sampleText, voice, speed),
-    BENCHMARK_MODEL_TIMEOUT_MS,
-    timeoutMessage,
-  );
-  return {
-    result,
-    generationMs: Date.now() - generationStartedAt,
-  };
-}
-
-function percentile(sortedValues: number[], percentileValue: number): number {
-  if (sortedValues.length === 0) return 0;
-  const rank = Math.ceil((percentileValue / 100) * sortedValues.length) - 1;
-  const index = Math.min(sortedValues.length - 1, Math.max(0, rank));
-  return sortedValues[index];
-}
-
 function StatusBanner({state}: {state: AppState}) {
   switch (state.kind) {
     case 'idle':
       return null;
     case 'preparing':
       return (
-        <View
-          style={styles.banner}
-          testID="status-banner"
-          accessibilityLabel="status-banner">
+        <View style={styles.banner}>
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
-            Preparing model...
-          </Text>
+          <Text style={styles.bannerText}>Preparing model...</Text>
         </View>
       );
     case 'downloading':
       return (
-        <View
-          style={styles.banner}
-          testID="status-banner"
-          accessibilityLabel="status-banner">
+        <View style={styles.banner}>
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText}>
             Downloading model... {Math.round(state.progress * 100)}%
           </Text>
         </View>
       );
     case 'generating':
       return (
-        <View
-          style={styles.banner}
-          testID="status-banner"
-          accessibilityLabel="status-banner">
+        <View style={styles.banner}>
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
-            Generating speech...
-          </Text>
-        </View>
-      );
-    case 'benchmarking':
-      return (
-        <View
-          style={styles.banner}
-          testID="status-banner"
-          accessibilityLabel="status-banner">
-          <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
-            Benchmarking {state.model} ({state.completed + 1}/{state.total})...
-          </Text>
+          <Text style={styles.bannerText}>Generating speech...</Text>
         </View>
       );
     case 'playing':
       return (
-        <View
-          style={styles.banner}
-          testID="status-banner"
-          accessibilityLabel="status-banner">
+        <View style={styles.banner}>
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
-            Playing...
-          </Text>
+          <Text style={styles.bannerText}>Playing...</Text>
         </View>
       );
     case 'error':
       return (
-        <View
-          style={[styles.banner, styles.bannerError]}
-          testID="error-banner"
-          accessibilityLabel="error-banner">
-          <Text
-            style={styles.bannerErrorText}
-            {...e2eTextProps('error-message')}>
-            {state.message}
-          </Text>
+        <View style={[styles.banner, styles.bannerError]}>
+          <Text style={styles.bannerErrorText}>{state.message}</Text>
         </View>
       );
   }
 }
 
-function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
-  return (
-    <View
-      style={styles.resultCard}
-      testID="benchmark-report"
-      accessibilityLabel="benchmark-report">
-      <Text style={styles.resultTitle}>Benchmark Report</Text>
-      <View style={styles.resultRow}>
-        <Text style={styles.resultLabel}>Sample Text</Text>
-        <Text
-          style={[styles.resultValue, styles.resultLongValue]}
-          {...e2eTextProps('benchmark-sample-text')}>
-          {report.sampleText}
-        </Text>
-      </View>
-      <View style={styles.resultRow}>
-        <Text style={styles.resultLabel}>Characters</Text>
-        <Text
-          style={styles.resultValue}
-          {...e2eTextProps('benchmark-char-length')}>
-          {report.characterLength}
-        </Text>
-      </View>
-      {report.rows.map(row => (
-        <View
-          key={row.model}
-          style={styles.benchmarkRow}
-          testID={`benchmark-row-${row.model}`}
-          accessibilityLabel={`benchmark-row-${row.model}`}>
-          <Text style={styles.benchmarkModel}>{row.modelDisplayName}</Text>
-          <Text style={styles.benchmarkMetric}>
-            {row.status === 'passed'
-              ? `Best ${((row.generationMs ?? 0) / 1000).toFixed(2)}s | p50 ${(
-                  (row.warmP50GenerationMs ?? 0) / 1000
-                ).toFixed(2)}s | p95 ${(
-                  (row.warmP95GenerationMs ?? 0) / 1000
-                ).toFixed(2)}s | RTF ${(row.rtf ?? 0).toFixed(3)}`
-              : `Failed | ${row.failedStage}: ${row.errorSummary}`}
-          </Text>
-        </View>
-      ))}
-      <Text
-        style={styles.benchmarkJson}
-        {...e2eTextProps('benchmark-json')}
-        selectable>
-        {JSON.stringify(report)}
-      </Text>
-    </View>
-  );
-}
-
 function ResultCard({result}: {result: KittenTTSResult}) {
   return (
-    <View
-      style={styles.resultCard}
-      testID="result-card"
-      accessibilityLabel="result-card">
+    <View style={styles.resultCard}>
       <Text style={styles.resultTitle}>Generated Audio</Text>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Voice</Text>
-        <Text style={styles.resultValue}>{voiceDisplayName(result.voice)}</Text>
-      </View>
-      <View style={styles.resultRow}>
-        <Text style={styles.resultLabel}>Duration</Text>
-        <Text
-          style={styles.resultValue}
-          testID="duration"
-          accessibilityLabel="duration">
-          {result.duration.toFixed(2)}s
+        <Text style={styles.resultValue}>
+          {voiceDisplayName(result.voice)}
         </Text>
       </View>
       <View style={styles.resultRow}>
+        <Text style={styles.resultLabel}>Duration</Text>
+        <Text style={styles.resultValue}>{result.duration.toFixed(2)}s</Text>
+      </View>
+      <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Samples</Text>
-        <Text
-          style={styles.resultValue}
-          testID="sample-count"
-          accessibilityLabel="sample-count">
+        <Text style={styles.resultValue}>
           {result.samples.length.toLocaleString()}
         </Text>
       </View>
       <View style={styles.resultRow}>
         <Text style={styles.resultLabel}>Sample Rate</Text>
-        <Text
-          style={styles.resultValue}
-          testID="sample-rate"
-          accessibilityLabel="sample-rate">
+        <Text style={styles.resultValue}>
           {result.sampleRate.toLocaleString()} Hz
-        </Text>
-      </View>
-      <View style={styles.resultRow}>
-        <Text style={styles.resultLabel}>Sample Hash</Text>
-        <Text
-          style={styles.resultValue}
-          testID="sample-hash"
-          accessibilityLabel="sample-hash">
-          {computeSampleHash(result.samples)}
         </Text>
       </View>
     </View>
   );
-}
-
-function computeSampleHash(samples: ArrayLike<number>): string {
-  let hash = 2166136261;
-
-  for (let index = 0; index < samples.length; index += 1) {
-    const pcm16 = Math.max(
-      -32768,
-      Math.min(32767, Math.round(samples[index] * 32767)),
-    );
-    hash ^= pcm16 & 0xff;
-    hash = Math.imul(hash, 16777619);
-    hash ^= (pcm16 >> 8) & 0xff;
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 const styles = StyleSheet.create({
@@ -946,10 +451,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#007AFF',
   },
-  buttonBenchmark: {
-    backgroundColor: '#111827',
-    marginBottom: 16,
-  },
   buttonDisabled: {
     opacity: 0.5,
   },
@@ -960,11 +461,6 @@ const styles = StyleSheet.create({
   },
   buttonSecondaryText: {
     color: '#007AFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonBenchmarkText: {
-    color: '#FFF',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -1023,31 +519,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#000',
-  },
-  resultLongValue: {
-    flex: 1,
-    marginLeft: 12,
-    textAlign: 'right',
-  },
-  benchmarkRow: {
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
-    paddingTop: 10,
-    marginTop: 10,
-  },
-  benchmarkModel: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  benchmarkMetric: {
-    color: '#4B5563',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  benchmarkJson: {
-    color: '#6B7280',
-    fontSize: 10,
-    marginTop: 12,
   },
 });

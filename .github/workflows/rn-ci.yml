@@ -29,7 +29,7 @@ jobs:
       - run: npm test
 
   ios-unsigned-package-test:
-    name: Experimental unsigned iOS IPA on TestMu
+    name: Benchmark app iOS on TestMu
     runs-on: macos-latest
     needs: sdk
 
@@ -45,7 +45,7 @@ jobs:
         with:
           ruby-version: '3.1'
           bundler-cache: true
-          working-directory: examples/BareRNExample
+          working-directory: benchmark/app
 
       - id: sdk-pack
         name: Build SDK package tarball
@@ -62,7 +62,7 @@ jobs:
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
           echo "Packed SDK tarball: $tarball"
 
-      - name: Install example dependencies from SDK tarball
+      - name: Install benchmark app dependencies from SDK tarball
         run: |
           npm ci
           npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
@@ -76,13 +76,13 @@ jobs:
           }
           console.log(`Using local SDK tarball version ${installedPackage.version}`);
           NODE
-        working-directory: examples/BareRNExample
+        working-directory: benchmark/app
 
       - name: Install CocoaPods
         run: |
           bundle install
           bundle exec pod install
-        working-directory: examples/BareRNExample/ios
+        working-directory: benchmark/app/ios
 
       - name: Build unsigned iOS app and package IPA
         run: |
@@ -114,12 +114,12 @@ jobs:
           cp -R "$app_path" "$package_dir/Payload/"
           (cd "$package_dir" && zip -qry "$ipa_path" Payload)
           unzip -l "$ipa_path" | sed -n '1,40p'
-        working-directory: examples/BareRNExample
+        working-directory: benchmark/app
 
       - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bare-rn-unsigned-ipa
+          name: benchmark-rn-unsigned-ipa
           path: artifacts/ios/BasicExample-unsigned.ipa
 
       - name: Prune old TestMu unsigned iOS uploads
@@ -225,7 +225,7 @@ jobs:
           if-no-files-found: warn
 
   android-example:
-    name: Bare RN Android release APK
+    name: Benchmark app Android release APK
     runs-on: ubuntu-latest
     needs: ios-unsigned-package-test
 
@@ -259,7 +259,7 @@ jobs:
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
           echo "Packed SDK tarball: $tarball"
 
-      - name: Install example dependencies from SDK tarball
+      - name: Install benchmark app dependencies from SDK tarball
         run: |
           npm ci
           npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
@@ -273,15 +273,15 @@ jobs:
           }
           console.log(`Using local SDK tarball version ${installedPackage.version}`);
           NODE
-        working-directory: examples/BareRNExample
+        working-directory: benchmark/app
 
       - run: ./gradlew assembleRelease
-        working-directory: examples/BareRNExample/android
+        working-directory: benchmark/app/android
 
       - uses: actions/upload-artifact@v4
         with:
-          name: bare-rn-release-apk
-          path: examples/BareRNExample/android/app/build/outputs/apk/release/app-release.apk
+          name: benchmark-rn-release-apk
+          path: benchmark/app/android/app/build/outputs/apk/release/app-release.apk
 
   upload-testmu-app:
     name: Upload APK to TestMu
@@ -315,7 +315,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: steps.testmu-creds.outputs.present == 'true'
         with:
-          name: bare-rn-release-apk
+          name: benchmark-rn-release-apk
           path: artifacts/android
 
       - name: Prune old TestMu CI uploads
@@ -395,9 +395,9 @@ jobs:
           - slug: galaxy-note10
             device: Galaxy Note10
             version: "12"
-          - slug: galaxy-s21
-            device: Galaxy S21
-            version: "12"
+          - slug: pixel-8
+            device: Pixel 8
+            version: "14"
           - slug: xiaomi-redmi-note-8
             device: Xiaomi Redmi Note 8
             version: "10"
@@ -473,405 +473,13 @@ jobs:
           path: e2e/appium/reports/*.json
           if-no-files-found: warn
 
-  prepare-testmu-ios-app:
-    name: Prepare TestMu iOS app
-    runs-on: ubuntu-latest
-    outputs:
-      app_url: ${{ steps.ios-app.outputs.app_url }}
-      enabled: ${{ steps.ios-app.outputs.enabled }}
-      ipa_url: ${{ steps.ios-app.outputs.ipa_url }}
-      mode: ${{ steps.ios-app.outputs.mode }}
-
-    steps:
-      - id: ios-app
-        name: Choose iOS app source
-        env:
-          TESTMU_IOS_APP_URL_SECRET: ${{ secrets.TESTMU_IOS_APP_URL }}
-          TESTMU_IOS_APP_URL_VAR: ${{ vars.TESTMU_IOS_APP_URL }}
-          TESTMU_IOS_IPA_URL_SECRET: ${{ secrets.TESTMU_IOS_IPA_URL }}
-          TESTMU_IOS_IPA_URL_VAR: ${{ vars.TESTMU_IOS_IPA_URL }}
-          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
-          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-          IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
-        run: |
-          app_url="${TESTMU_IOS_APP_URL_SECRET:-$TESTMU_IOS_APP_URL_VAR}"
-          ipa_url="${TESTMU_IOS_IPA_URL_SECRET:-$TESTMU_IOS_IPA_URL_VAR}"
-          if [ -n "$IOS_CERTIFICATE_P12_BASE64" ] && [ -n "$IOS_CERTIFICATE_PASSWORD" ] && [ -n "$IOS_PROVISIONING_PROFILE_BASE64" ] && [ -n "$IOS_DEVELOPMENT_TEAM" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "mode=build" >> "$GITHUB_OUTPUT"
-            echo "Building a signed iOS IPA from this commit, then uploading it to TestMu."
-          elif [ -n "$app_url" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "mode=preuploaded" >> "$GITHUB_OUTPUT"
-            echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
-            echo "Using pre-uploaded iOS TestMu app URL."
-          elif [ -n "$ipa_url" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "mode=ipa-url" >> "$GITHUB_OUTPUT"
-            echo "ipa_url=$ipa_url" >> "$GITHUB_OUTPUT"
-            echo "Downloading and uploading the configured iOS IPA URL to TestMu."
-          else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "mode=disabled" >> "$GITHUB_OUTPUT"
-            echo "Skipping iOS TestMu benchmark because iOS signing secrets, TESTMU_IOS_APP_URL, and TESTMU_IOS_IPA_URL are all missing."
-          fi
-
-  ios-example:
-    name: Bare RN iOS signed IPA
-    runs-on: macos-latest
-    needs: prepare-testmu-ios-app
-    if: needs.prepare-testmu-ios-app.outputs.mode == 'build'
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: '3.1'
-          bundler-cache: true
-          working-directory: examples/BareRNExample
-
-      - id: sdk-pack
-        name: Build SDK package tarball
-        run: |
-          npm ci
-          npm run build:ts
-          mkdir -p "$RUNNER_TEMP/kittentts-pack"
-          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
-          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
-          if [ ! -f "$tarball" ]; then
-            echo "SDK tarball was not created."
-            exit 1
-          fi
-          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-          echo "Packed SDK tarball: $tarball"
-
-      - name: Install example dependencies from SDK tarball
-        run: |
-          npm ci
-          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
-          node - <<'NODE'
-          const rootPackage = require('../../package.json');
-          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
-          if (installedPackage.version !== rootPackage.version) {
-            throw new Error(
-              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
-            );
-          }
-          console.log(`Using local SDK tarball version ${installedPackage.version}`);
-          NODE
-        working-directory: examples/BareRNExample
-
-      - id: ios-signing
-        name: Install iOS signing assets
-        env:
-          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
-          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-        run: |
-          set -euo pipefail
-          keychain_password="$(openssl rand -hex 24)"
-          keychain_path="$RUNNER_TEMP/app-signing.keychain-db"
-          certificate_path="$RUNNER_TEMP/ios-signing.p12"
-          profile_path="$RUNNER_TEMP/ios-profile.mobileprovision"
-          profile_plist="$RUNNER_TEMP/ios-profile.plist"
-
-          printf '%s' "$IOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
-          printf '%s' "$IOS_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$profile_path"
-
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security import "$certificate_path" -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          security cms -D -i "$profile_path" > "$profile_plist"
-          profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print UUID' "$profile_plist")"
-          profile_name="$(/usr/libexec/PlistBuddy -c 'Print Name' "$profile_plist")"
-          cp "$profile_path" "$HOME/Library/MobileDevice/Provisioning Profiles/$profile_uuid.mobileprovision"
-
-          echo "profile_name=$profile_name" >> "$GITHUB_OUTPUT"
-
-      - name: Install CocoaPods
-        run: |
-          bundle install
-          bundle exec pod install
-        working-directory: examples/BareRNExample/ios
-
-      - name: Archive and export IPA
-        env:
-          IOS_BUNDLE_IDENTIFIER_SECRET: ${{ secrets.IOS_BUNDLE_IDENTIFIER }}
-          IOS_BUNDLE_IDENTIFIER_VAR: ${{ vars.IOS_BUNDLE_IDENTIFIER }}
-          IOS_DEVELOPMENT_TEAM: ${{ secrets.IOS_DEVELOPMENT_TEAM }}
-          IOS_EXPORT_METHOD_SECRET: ${{ secrets.IOS_EXPORT_METHOD }}
-          IOS_EXPORT_METHOD_VAR: ${{ vars.IOS_EXPORT_METHOD }}
-          IOS_PROVISIONING_PROFILE_NAME: ${{ steps.ios-signing.outputs.profile_name }}
-          IOS_SIGNING_CERTIFICATE_SECRET: ${{ secrets.IOS_SIGNING_CERTIFICATE }}
-          IOS_SIGNING_CERTIFICATE_VAR: ${{ vars.IOS_SIGNING_CERTIFICATE }}
-        run: |
-          set -euo pipefail
-          bundle_id="${IOS_BUNDLE_IDENTIFIER_SECRET:-${IOS_BUNDLE_IDENTIFIER_VAR:-org.reactjs.native.example.BasicExample}}"
-          export_method="${IOS_EXPORT_METHOD_SECRET:-${IOS_EXPORT_METHOD_VAR:-development}}"
-          archive_path="$RUNNER_TEMP/BasicExample.xcarchive"
-          export_path="$RUNNER_TEMP/ios-export"
-          export_options="$RUNNER_TEMP/exportOptions.plist"
-          signing_certificate="${IOS_SIGNING_CERTIFICATE_SECRET:-${IOS_SIGNING_CERTIFICATE_VAR:-Apple Development}}"
-
-          cat > "$export_options" <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>compileBitcode</key>
-            <false/>
-            <key>method</key>
-            <string>$export_method</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>$bundle_id</key>
-              <string>$IOS_PROVISIONING_PROFILE_NAME</string>
-            </dict>
-            <key>signingCertificate</key>
-            <string>$signing_certificate</string>
-            <key>signingStyle</key>
-            <string>manual</string>
-            <key>stripSwiftSymbols</key>
-            <true/>
-            <key>teamID</key>
-            <string>$IOS_DEVELOPMENT_TEAM</string>
-          </dict>
-          </plist>
-          PLIST
-
-          xcodebuild \
-            -workspace ios/BasicExample.xcworkspace \
-            -scheme BasicExample \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath "$archive_path" \
-            DEVELOPMENT_TEAM="$IOS_DEVELOPMENT_TEAM" \
-            PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
-            CODE_SIGN_STYLE=Manual \
-            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROVISIONING_PROFILE_NAME" \
-            archive
-
-          xcodebuild \
-            -exportArchive \
-            -archivePath "$archive_path" \
-            -exportPath "$export_path" \
-            -exportOptionsPlist "$export_options"
-
-          ipa_path="$(find "$export_path" -maxdepth 1 -name '*.ipa' -print -quit)"
-          if [ ! -f "$ipa_path" ]; then
-            echo "IPA export did not produce an .ipa file."
-            exit 1
-          fi
-
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/ios"
-          cp "$ipa_path" "$GITHUB_WORKSPACE/artifacts/ios/BasicExample.ipa"
-        working-directory: examples/BareRNExample
-
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: bare-rn-release-ipa
-          path: artifacts/ios/BasicExample.ipa
-
-  upload-testmu-ios-app:
-    name: Upload IPA to TestMu
-    runs-on: ubuntu-latest
-    needs:
-      - prepare-testmu-ios-app
-      - ios-example
-    if: always() && needs.prepare-testmu-ios-app.outputs.enabled == 'true'
-    outputs:
-      enabled: ${{ steps.ios-app.outputs.enabled || steps.upload-ios-app.outputs.enabled }}
-      app_url: ${{ steps.ios-app.outputs.app_url || steps.upload-ios-app.outputs.app_url }}
-
-    steps:
-      - uses: actions/checkout@v4
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'build' || needs.prepare-testmu-ios-app.outputs.mode == 'ipa-url'
-
-      - id: ios-app
-        name: Use pre-uploaded iOS app
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'preuploaded'
-        run: |
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-          echo "app_url=${{ needs.prepare-testmu-ios-app.outputs.app_url }}" >> "$GITHUB_OUTPUT"
-
-      - name: Download configured IPA
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'ipa-url'
-        run: |
-          mkdir -p artifacts/ios
-          curl --fail --location --show-error \
-            --output artifacts/ios/BasicExample.ipa \
-            "${{ needs.prepare-testmu-ios-app.outputs.ipa_url }}"
-          if [ ! -s artifacts/ios/BasicExample.ipa ]; then
-            echo "Downloaded IPA is empty."
-            exit 1
-          fi
-
-      - uses: actions/download-artifact@v4
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'build' && needs.ios-example.result == 'success'
-        with:
-          name: bare-rn-release-ipa
-          path: artifacts/ios
-
-      - name: Prune old TestMu iOS CI uploads
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'ipa-url' || (needs.prepare-testmu-ios-app.outputs.mode == 'build' && needs.ios-example.result == 'success')
-        env:
-          LT_USERNAME: ${{ secrets.LT_USERNAME }}
-          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-        run: |
-          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
-            --location --request GET "https://manual-api.lambdatest.com/app/data?type=ios&level=user")"
-
-          app_ids="$(APP_DATA="$response" node - <<'NODE'
-          const response = JSON.parse(process.env.APP_DATA || "{}");
-          const apps = Array.isArray(response.data) ? response.data : [];
-          const ids = apps
-            .filter((app) => String(app.name || "").startsWith("KittenTTS_RN_iOS_CI_"))
-            .map((app) => app.app_id || app.appId || app.id)
-            .filter(Boolean);
-          process.stdout.write(ids.join(","));
-          NODE
-          )"
-
-          if [ -n "$app_ids" ]; then
-            curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
-              --location --request DELETE "https://manual-api.lambdatest.com/app/delete" \
-              --header "Content-Type: application/json" \
-              --data-raw "{\"appIds\":\"$app_ids\"}"
-            echo
-          else
-            echo "No old TestMu iOS CI uploads to prune."
-          fi
-
-      - id: upload-ios-app
-        name: Upload IPA to TestMu
-        if: needs.prepare-testmu-ios-app.outputs.mode == 'ipa-url' || (needs.prepare-testmu-ios-app.outputs.mode == 'build' && needs.ios-example.result == 'success')
-        env:
-          LT_USERNAME: ${{ secrets.LT_USERNAME }}
-          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-        run: |
-          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" \
-            --location --request POST "https://manual-api.lambdatest.com/app/upload/realDevice" \
-            --form "name=KittenTTS_RN_iOS_CI_${GITHUB_RUN_ID}" \
-            --form "appFile=@artifacts/ios/BasicExample.ipa")"
-
-          app_url="$(UPLOAD_RESPONSE="$response" node - <<'NODE'
-          const response = JSON.parse(process.env.UPLOAD_RESPONSE);
-          const appUrl = response.app_url || response.appUrl || response.app || response.url;
-          if (!appUrl || !String(appUrl).startsWith('lt://')) {
-            throw new Error(`Unable to find lt:// app URL in response: ${JSON.stringify(response)}`);
-          }
-          process.stdout.write(appUrl);
-          NODE
-          )"
-
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
-
-  testmu-ios-benchmark:
-    name: TestMu iOS benchmark (${{ matrix.device }})
-    runs-on: ubuntu-latest
-    needs:
-      - upload-testmu-ios-app
-    if: needs.upload-testmu-ios-app.outputs.enabled == 'true'
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          - slug: iphone-14
-            device: iPhone 14
-            version: "16"
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Appium harness
-        run: npm ci
-        working-directory: e2e/appium
-
-      - name: Run TestMu iOS benchmark
-        id: run-benchmark
-        continue-on-error: true
-        timeout-minutes: 17
-        env:
-          LT_USERNAME: ${{ secrets.LT_USERNAME }}
-          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_IOS_APP_URL: ${{ needs.upload-testmu-ios-app.outputs.app_url }}
-          TESTMU_DEVICE: ${{ matrix.device }}
-          TESTMU_PLATFORM_NAME: iOS
-          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
-          TESTMU_IOS_DEVICE: ${{ matrix.device }}
-          TESTMU_IOS_VERSION: ${{ matrix.version }}
-          TESTMU_REAL_DEVICE: true
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
-        run: |
-          mkdir -p reports
-          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
-          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
-          set +e
-          set -o pipefail
-          npm run test:ios 2>&1 | tee reports/appium-output.log
-          status="${PIPESTATUS[0]}"
-          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
-          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
-          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
-          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
-          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
-          exit "$status"
-        working-directory: e2e/appium
-
-      - name: Write device failure report
-        if: steps.run-benchmark.outcome == 'failure'
-        env:
-          TESTMU_DEVICE: ${{ matrix.device }}
-          TESTMU_PLATFORM_NAME: iOS
-          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
-          TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
-          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
-          BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
-          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-benchmark.outputs.finished_at_ms }}
-          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-benchmark.outputs.total_runtime_seconds }}
-        run: |
-          node scripts/write-failure-report.js
-        working-directory: e2e/appium
-
-      - name: Upload device benchmark report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: testmu-benchmark-ios-${{ matrix.slug }}
-          path: e2e/appium/reports/*.json
-          if-no-files-found: warn
-
   testmu-benchmark-report:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
+      - ios-unsigned-package-test
       - upload-testmu-app
-      - prepare-testmu-ios-app
-      - upload-testmu-ios-app
       - testmu-android-benchmark
-      - testmu-ios-benchmark
     if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
 
     steps:
