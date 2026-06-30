@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@kittentts/react-native": "^1.1.0",
+    "onnxruntime-react-native": "^1.24.3",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-fs": "npm:@dr.pogodin/react-native-fs@^2.38.2",

@@ -10,6 +10,9 @@ const EXPECTED_MODELS = [
 const BENCHMARK_REPORT_TIMEOUT_MS = Number(
   process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 9 * 60 * 1000
 );
+const APP_READY_TIMEOUT_MS = Number(
+  process.env.TESTMU_APP_READY_TIMEOUT_MS || 6 * 60 * 1000
+);
 
 function slugify(value) {
   return String(value || "device")
@@ -134,6 +137,57 @@ async function getOptionalText(accessibilityId) {
   return null;
 }
 
+async function isDisplayed(accessibilityId) {
+  try {
+    const element = await $(`~${accessibilityId}`);
+    return await element.isDisplayed();
+  } catch {
+    return false;
+  }
+}
+
+async function getPageSourceSummary() {
+  try {
+    const source = await browser.getPageSource();
+    return source
+      .replace(/\s+/g, " ")
+      .slice(0, 2000);
+  } catch (error) {
+    return `Could not read page source: ${error.message}`;
+  }
+}
+
+async function waitForAppReady(timeoutMs) {
+  const startedAt = Date.now();
+  let lastStatus = "No app status captured yet.";
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const errorMessage = await getOptionalText("error-message");
+    if (errorMessage) {
+      throw new Error(`App showed error-banner before benchmark: ${errorMessage}`);
+    }
+
+    const statusLabel = await getOptionalText("status-label");
+    if (statusLabel && statusLabel !== lastStatus) {
+      lastStatus = statusLabel;
+      console.log(`[KittenTTS app status] ${statusLabel}`);
+    }
+
+    const inputVisible = await isDisplayed("tts-input");
+    const benchmark = await $("~benchmark-button");
+    if (inputVisible && (await benchmark.isEnabled().catch(() => false))) {
+      return benchmark;
+    }
+
+    await browser.pause(5000);
+  }
+
+  const sourceSummary = await getPageSourceSummary();
+  throw new Error(
+    `Timed out waiting for app readiness after ${timeoutMs}ms. Last app status: ${lastStatus}. Page source: ${sourceSummary}`
+  );
+}
+
 async function waitForBenchmarkReport(timeoutMs) {
   const startedAt = Date.now();
   let lastStatus = "No app status captured yet.";
@@ -173,8 +227,8 @@ async function waitForBenchmarkReport(timeoutMs) {
 describe("KittenTTS React Native benchmark", () => {
   it("benchmarks every bundled model and writes a device report", async () => {
     const deviceStartedAtMs = Date.now();
+    const benchmark = await waitForAppReady(APP_READY_TIMEOUT_MS);
     const input = await $("~tts-input");
-    await input.waitForDisplayed({ timeout: 300000 });
 
     const sampleText = process.env.TESTMU_SAMPLE_TEXT;
     if (sampleText) {
@@ -192,8 +246,6 @@ describe("KittenTTS React Native benchmark", () => {
       }
     }
 
-    const benchmark = await $("~benchmark-button");
-    await benchmark.waitForEnabled({ timeout: 300000 });
     await benchmark.click();
 
     const report = await waitForBenchmarkReport(BENCHMARK_REPORT_TIMEOUT_MS);
