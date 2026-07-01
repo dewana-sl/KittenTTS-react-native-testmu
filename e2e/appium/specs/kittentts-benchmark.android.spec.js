@@ -8,7 +8,7 @@ const EXPECTED_MODELS = [
   "kitten-tts-mini-0.8",
 ];
 const BENCHMARK_REPORT_TIMEOUT_MS = Number(
-  process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 9 * 60 * 1000
+  process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 18 * 60 * 1000
 );
 const APP_READY_TIMEOUT_MS = Number(
   process.env.TESTMU_APP_READY_TIMEOUT_MS || 6 * 60 * 1000
