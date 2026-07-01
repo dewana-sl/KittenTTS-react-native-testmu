@@ -14,7 +14,7 @@ permissions:
 
 env:
   DEFAULT_TESTMU_SAMPLE_TEXT: |-
-    Kitten TTS runs fully on your device and creates clear speech quickly.
+    KittenTTS runs fully on your device and creates clear speech quickly.
     This benchmark compares every model for speed, quality, and consistency.
 
 jobs:
