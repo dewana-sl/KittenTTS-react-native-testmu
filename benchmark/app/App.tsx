@@ -143,7 +143,8 @@ export default function App() {
   const mountedRef = useRef(true);
   const [state, setState] = useState<AppState>({kind: 'idle'});
   const [inputText, setInputText] = useState(
-    'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.',
+    'Kitten TTS runs fully on your device and creates clear speech quickly.\n' +
+      'This benchmark compares every model for speed, quality, and consistency.',
   );
   const [selectedModel, setSelectedModel] = useState(KittenModel.Nano);
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);

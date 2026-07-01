@@ -12,6 +12,11 @@ permissions:
   issues: write
   pull-requests: write
 
+env:
+  DEFAULT_TESTMU_SAMPLE_TEXT: |-
+    Kitten TTS runs fully on your device and creates clear speech quickly.
+    This benchmark compares every model for speed, quality, and consistency.
+
 jobs:
   sdk:
     name: SDK typecheck and tests
@@ -210,7 +215,7 @@ jobs:
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
           TESTMU_REQUIRE_WER_AUDIO: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
           set -o pipefail
@@ -430,7 +435,7 @@ jobs:
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
           TESTMU_REQUIRE_WER_AUDIO: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
           started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
@@ -457,7 +462,7 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
           BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
