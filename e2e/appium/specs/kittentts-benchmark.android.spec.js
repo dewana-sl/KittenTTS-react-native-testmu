@@ -279,7 +279,7 @@ async function waitForBenchmarkReport(timeoutMs) {
     if (report) {
       lastReport = report;
       if (hasFinishedBenchmark(report)) {
-        return (await getBenchmarkReportFromUi({ includeAudio: true })) || report;
+        return attachWerAudioChunks(report);
       }
     }
 
@@ -375,7 +375,14 @@ describe("KittenTTS React Native benchmark", () => {
           expect(row.werReferenceText).toBe(report.sampleText);
           expect(row.werAudioFormat).toBe("wav-base64");
           expect(row.werAudioSampleRate).toBe(24000);
-          expect(row.werAudioBase64.length).toBeGreaterThan(1000);
+          expect(row.werAudioChunkCount).toBeGreaterThan(0);
+          expect(row.werAudioBase64Length).toBeGreaterThan(1000);
+          if (typeof row.werAudioBase64 !== "string") {
+            throw new Error(
+              `Missing attached WER audio for ${expectedModel}; expected ${row.werAudioChunkCount} chunk(s) and ${row.werAudioBase64Length} base64 characters.`
+            );
+          }
+          expect(row.werAudioBase64.length).toBe(row.werAudioBase64Length);
           expect(row.parakeetStatus).toBe("pending");
         }
       } else {

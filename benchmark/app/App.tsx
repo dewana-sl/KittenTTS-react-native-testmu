@@ -101,7 +101,7 @@ const MODELS: KittenModel[] = [
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
-const WER_AUDIO_CHUNK_SIZE = 16000;
+const WER_AUDIO_CHUNK_SIZE = 8000;
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -1143,8 +1143,9 @@ const styles = StyleSheet.create({
   },
   benchmarkAudioChunk: {
     color: '#FFFFFF',
-    fontSize: 2,
-    height: 2,
-    lineHeight: 2,
+    fontSize: 8,
+    height: 8,
+    includeFontPadding: false,
+    lineHeight: 8,
   },
 });
