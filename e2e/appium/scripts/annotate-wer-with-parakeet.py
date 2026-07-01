@@ -20,6 +20,7 @@ PARAKEET_MODEL = "nvidia/parakeet-tdt-0.6b-v2"
 PARAKEET_FUNCTION_ID = "d3fe9151-442b-4204-a70d-5fcc597fd610"
 PARAKEET_SERVER = "grpc.nvcf.nvidia.com:443"
 TARGET_SAMPLE_RATE = 16000
+WER_NORMALIZATION_VERSION = "kitten-domain-v1"
 
 
 def parse_args() -> argparse.Namespace:
@@ -36,8 +37,16 @@ def read_json_files(input_dir: Path) -> list[Path]:
     return sorted(path for path in input_dir.rglob("*.json") if path.is_file())
 
 
+def normalize_transcript_text(text: str) -> str:
+    normalized = text.lower()
+    normalized = re.sub(r"\bkittentts\b", "kitten tts", normalized)
+    return normalized
+
+
 def normalize_words(text: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+(?:'[a-z0-9]+)?", text.lower())
+    return re.findall(
+        r"[a-z0-9]+(?:'[a-z0-9]+)?", normalize_transcript_text(text)
+    )
 
 
 def edit_distance(reference: list[str], hypothesis: list[str]) -> int:
@@ -69,6 +78,7 @@ def compute_wer(reference_text: str, transcript: str) -> dict[str, Any]:
         "parakeetEditDistance": distance,
         "parakeetReferenceWordCount": len(reference_words),
         "parakeetTranscriptWordCount": len(transcript_words),
+        "parakeetWerNormalization": WER_NORMALIZATION_VERSION,
     }
 
 

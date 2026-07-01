@@ -1143,8 +1143,8 @@ const styles = StyleSheet.create({
   },
   benchmarkAudioChunk: {
     color: '#FFFFFF',
-    fontSize: 1,
-    height: 1,
-    opacity: 0.01,
+    fontSize: 2,
+    height: 2,
+    lineHeight: 2,
   },
 });

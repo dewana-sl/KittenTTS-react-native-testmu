@@ -559,3 +559,29 @@ jobs:
                 body,
               });
             }
+
+      - name: Fail on benchmark failures
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const summary = JSON.parse(fs.readFileSync('benchmark-report/summary.json', 'utf8'));
+          const failedReports = summary.reports.filter(
+            (report) => report.status === 'failed' || report.status === 'partial',
+          );
+          const failedRows = summary.reports.flatMap((report) =>
+            (report.rows || [])
+              .filter((row) => row.status === 'failed')
+              .map((row) => `${report.device}: ${row.modelDisplayName || row.model}: ${row.errorSummary || row.failedStage || 'failed'}`),
+          );
+          if (failedReports.length || failedRows.length) {
+            console.error(`Benchmark failures: ${failedReports.length} device report(s), ${failedRows.length} model row(s).`);
+            for (const report of failedReports) {
+              console.error(`${report.device}: ${report.errorSummary || report.failedStage || report.status}`);
+            }
+            for (const row of failedRows) {
+              console.error(row);
+            }
+            process.exit(1);
+          }
+          console.log('No benchmark failures found.');
+          NODE
