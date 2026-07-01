@@ -59,23 +59,38 @@ function isIosSession() {
   );
 }
 
+function usableElementText(candidate, accessibilityId) {
+  const text = String(candidate || "");
+  return text.length > 0 && text !== accessibilityId ? text : "";
+}
+
 async function readElementText(accessibilityId) {
   const element = await $(`~${accessibilityId}`);
+  const firstText = usableElementText(
+    await element.getText().catch(() => ""),
+    accessibilityId
+  );
+
+  if (firstText) {
+    return firstText;
+  }
+
   const attributeNames = isIosSession()
     ? ["label", "value", "name"]
     : ["text", "label", "value"];
-  const candidates = [await element.getText().catch(() => "")];
 
   for (const attributeName of attributeNames) {
-    candidates.push(await element.getAttribute(attributeName).catch(() => ""));
+    const attributeText = usableElementText(
+      await element.getAttribute(attributeName).catch(() => ""),
+      accessibilityId
+    );
+
+    if (attributeText) {
+      return attributeText;
+    }
   }
 
-  return (
-    candidates.find((candidate) => {
-      const text = String(candidate || "");
-      return text.length > 0 && text !== accessibilityId;
-    }) || ""
-  );
+  return "";
 }
 
 async function attachWerAudioChunks(report) {

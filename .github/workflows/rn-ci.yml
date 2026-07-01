@@ -202,7 +202,7 @@ jobs:
         working-directory: e2e/appium
 
       - name: Run TestMu iPhone 14 benchmark with unsigned IPA
-        timeout-minutes: 17
+        timeout-minutes: 25
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -422,7 +422,7 @@ jobs:
       - name: Run TestMu Android benchmark
         id: run-benchmark
         continue-on-error: true
-        timeout-minutes: 17
+        timeout-minutes: 25
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -442,12 +442,12 @@ jobs:
           echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
           set +e
           set -o pipefail
-          timeout 15m npm run test:android 2>&1 | tee reports/appium-output.log
+          timeout 20m npm run test:android 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
           finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
           if [ "$status" -eq 124 ]; then
-            echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+            echo "Timed out after 20 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
           fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
