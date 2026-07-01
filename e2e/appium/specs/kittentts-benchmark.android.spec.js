@@ -49,14 +49,26 @@ async function readBenchmarkReport(accessibilityId) {
   }
 }
 
+function isIosSession() {
+  return /ios/i.test(
+    String(
+      browser?.capabilities?.platformName ||
+        browser?.requestedCapabilities?.platformName ||
+        getPlatformName()
+    )
+  );
+}
+
 async function readElementText(accessibilityId) {
   const element = await $(`~${accessibilityId}`);
-  const candidates = [
-    await element.getText().catch(() => ""),
-    await element.getAttribute("text").catch(() => ""),
-    await element.getAttribute("label").catch(() => ""),
-    await element.getAttribute("value").catch(() => ""),
-  ];
+  const attributeNames = isIosSession()
+    ? ["label", "value", "name"]
+    : ["text", "label", "value"];
+  const candidates = [await element.getText().catch(() => "")];
+
+  for (const attributeName of attributeNames) {
+    candidates.push(await element.getAttribute(attributeName).catch(() => ""));
+  }
 
   return (
     candidates.find((candidate) => {

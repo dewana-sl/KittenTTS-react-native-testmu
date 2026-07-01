@@ -101,7 +101,7 @@ const MODELS: KittenModel[] = [
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
-const WER_AUDIO_CHUNK_SIZE = 8000;
+const WER_AUDIO_CHUNK_SIZE = Platform.OS === 'android' ? 8000 : 16000;
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
