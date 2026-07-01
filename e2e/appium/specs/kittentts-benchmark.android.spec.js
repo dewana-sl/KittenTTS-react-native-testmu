@@ -66,6 +66,21 @@ function usableElementText(candidate, accessibilityId) {
 
 async function readElementText(accessibilityId) {
   const element = await $(`~${accessibilityId}`);
+
+  if (!isIosSession()) {
+    const candidates = [
+      await element.getText().catch(() => ""),
+      await element.getAttribute("text").catch(() => ""),
+      await element.getAttribute("label").catch(() => ""),
+      await element.getAttribute("value").catch(() => ""),
+    ];
+
+    return (
+      candidates.find((candidate) => usableElementText(candidate, accessibilityId)) ||
+      ""
+    );
+  }
+
   const firstText = usableElementText(
     await element.getText().catch(() => ""),
     accessibilityId
@@ -306,7 +321,7 @@ async function waitForBenchmarkReport(timeoutMs) {
     if (report) {
       lastReport = report;
       if (hasFinishedBenchmark(report)) {
-        return attachWerAudioChunks(report);
+        return (await getBenchmarkReportFromUi({ includeAudio: true })) || report;
       }
     }
 
