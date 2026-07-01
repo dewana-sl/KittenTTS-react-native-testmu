@@ -786,6 +786,7 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
           {report.characterLength}
         </Text>
       </View>
+      <BenchmarkAudioChunks report={report} />
       {report.rows.map(row => (
         <View
           key={row.model}
@@ -810,7 +811,6 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
         selectable>
         {displayReport}
       </Text>
-      <BenchmarkAudioChunks report={report} />
     </View>
   );
 }
