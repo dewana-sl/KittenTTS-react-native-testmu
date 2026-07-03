@@ -12,6 +12,11 @@ permissions:
   issues: write
   pull-requests: write
 
+env:
+  DEFAULT_TESTMU_SAMPLE_TEXT: |-
+    KittenTTS runs fully on your device and creates clear speech quickly.
+    This benchmark compares every model for speed, quality, and consistency.
+
 jobs:
   sdk:
     name: SDK typecheck and tests
@@ -197,7 +202,7 @@ jobs:
         working-directory: e2e/appium
 
       - name: Run TestMu iPhone 14 benchmark with unsigned IPA
-        timeout-minutes: 17
+        timeout-minutes: 40
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -208,8 +213,9 @@ jobs:
           TESTMU_IOS_DEVICE: iPhone 14
           TESTMU_IOS_VERSION: "16"
           TESTMU_REAL_DEVICE: true
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_REQUIRE_WER_AUDIO: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
           set -o pipefail
@@ -416,7 +422,7 @@ jobs:
       - name: Run TestMu Android benchmark
         id: run-benchmark
         continue-on-error: true
-        timeout-minutes: 17
+        timeout-minutes: 40
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -427,20 +433,21 @@ jobs:
           TESTMU_ANDROID_DEVICE: ${{ matrix.device }}
           TESTMU_ANDROID_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 540000
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_REQUIRE_WER_AUDIO: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
           started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
           set +e
           set -o pipefail
-          timeout 15m npm run test:android 2>&1 | tee reports/appium-output.log
+          timeout 35m npm run test:android 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
           finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
           if [ "$status" -eq 124 ]; then
-            echo "Timed out after 15 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
+            echo "Timed out after 35 minutes while waiting for the TestMu/Appium benchmark to finish." | tee -a reports/appium-output.log
           fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
@@ -455,7 +462,7 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || 'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.' }}
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-benchmark.outputs.exit_code }}
           BENCHMARK_STARTED_AT_MS: ${{ steps.run-benchmark.outputs.started_at_ms }}
@@ -491,6 +498,18 @@ jobs:
           pattern: testmu-benchmark-*
           path: benchmark-results
           merge-multiple: true
+
+      - name: Annotate WER with Parakeet
+        env:
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+        run: |
+          if [ -n "$NVIDIA_API_KEY" ]; then
+            python3 -m pip install --upgrade pip
+            python3 -m pip install nvidia-riva-client==2.26.0
+          else
+            echo "NVIDIA_API_KEY is not configured; Parakeet WER rows will be marked skipped."
+          fi
+          python3 e2e/appium/scripts/annotate-wer-with-parakeet.py benchmark-results --strip-audio
 
       - name: Build benchmark report
         env:
@@ -545,3 +564,29 @@ jobs:
                 body,
               });
             }
+
+      - name: Fail on benchmark failures
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const summary = JSON.parse(fs.readFileSync('benchmark-report/summary.json', 'utf8'));
+          const failedReports = summary.reports.filter(
+            (report) => report.status === 'failed' || report.status === 'partial',
+          );
+          const failedRows = summary.reports.flatMap((report) =>
+            (report.rows || [])
+              .filter((row) => row.status === 'failed')
+              .map((row) => `${report.device}: ${row.modelDisplayName || row.model}: ${row.errorSummary || row.failedStage || 'failed'}`),
+          );
+          if (failedReports.length || failedRows.length) {
+            console.error(`Benchmark failures: ${failedReports.length} device report(s), ${failedRows.length} model row(s).`);
+            for (const report of failedReports) {
+              console.error(`${report.device}: ${report.errorSummary || report.failedStage || report.status}`);
+            }
+            for (const row of failedRows) {
+              console.error(row);
+            }
+            process.exit(1);
+          }
+          console.log('No benchmark failures found.');
+          NODE

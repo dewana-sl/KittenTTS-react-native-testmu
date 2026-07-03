@@ -8,7 +8,7 @@ const EXPECTED_MODELS = [
   "kitten-tts-mini-0.8",
 ];
 const BENCHMARK_REPORT_TIMEOUT_MS = Number(
-  process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 9 * 60 * 1000
+  process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 30 * 60 * 1000
 );
 const APP_READY_TIMEOUT_MS = Number(
   process.env.TESTMU_APP_READY_TIMEOUT_MS || 6 * 60 * 1000
@@ -19,6 +19,10 @@ function slugify(value) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function automationSlug(value) {
+  return slugify(value);
 }
 
 function parseBenchmarkJson(rawText) {
@@ -36,13 +40,226 @@ function hasFinishedBenchmark(report) {
   return Boolean(report?.finishedAt);
 }
 
-async function getBenchmarkReportFromUi() {
+async function readBenchmarkReport(accessibilityId) {
   try {
-    const reportText = await $("~benchmark-json").getText();
+    const reportText = await $(`~${accessibilityId}`).getText();
     return parseBenchmarkJson(reportText);
   } catch {
     return null;
   }
+}
+
+function isIosSession() {
+  return /ios/i.test(
+    String(
+      browser?.capabilities?.platformName ||
+        browser?.requestedCapabilities?.platformName ||
+        getPlatformName()
+    )
+  );
+}
+
+function usableElementText(candidate, accessibilityId) {
+  const text = String(candidate || "");
+  return text.length > 0 && text !== accessibilityId ? text : "";
+}
+
+async function readElementText(accessibilityId) {
+  const element = await $(`~${accessibilityId}`);
+
+  if (!isIosSession()) {
+    const candidates = [
+      await element.getText().catch(() => ""),
+      await element.getAttribute("text").catch(() => ""),
+      await element.getAttribute("label").catch(() => ""),
+      await element.getAttribute("value").catch(() => ""),
+    ];
+
+    return (
+      candidates.find((candidate) => usableElementText(candidate, accessibilityId)) ||
+      ""
+    );
+  }
+
+  const firstText = usableElementText(
+    await element.getText().catch(() => ""),
+    accessibilityId
+  );
+
+  if (firstText) {
+    return firstText;
+  }
+
+  const attributeNames = isIosSession()
+    ? ["label", "value", "name"]
+    : ["text", "label", "value"];
+
+  for (const attributeName of attributeNames) {
+    const attributeText = usableElementText(
+      await element.getAttribute(attributeName).catch(() => ""),
+      accessibilityId
+    );
+
+    if (attributeText) {
+      return attributeText;
+    }
+  }
+
+  return "";
+}
+
+async function attachWerAudioChunks(report) {
+  const rows = [];
+
+  if (!isIosSession()) {
+    return attachWerAudioChunksFromPager(report);
+  }
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      rows.push(row);
+      continue;
+    }
+
+    const chunkCount = Number(row.werAudioChunkCount || 0);
+    if (chunkCount <= 0) {
+      rows.push(row);
+      continue;
+    }
+
+    const rowSlug = automationSlug(row.model);
+    const chunks = [];
+    for (let index = 0; index < chunkCount; index += 1) {
+      const accessibilityId = `benchmark-audio-${rowSlug}-${index}`;
+      const chunk = await readElementText(accessibilityId);
+      if (!chunk) {
+        throw new Error(
+          `Missing WER audio chunk ${index + 1}/${chunkCount} for ${row.model} (${accessibilityId}).`
+        );
+      }
+      chunks.push(chunk);
+    }
+
+    const werAudioBase64 = chunks.join("");
+    if (
+      Number.isFinite(row.werAudioBase64Length) &&
+      werAudioBase64.length !== row.werAudioBase64Length
+    ) {
+      throw new Error(
+        `WER audio length mismatch for ${row.model}: expected ${row.werAudioBase64Length}, got ${werAudioBase64.length}.`
+      );
+    }
+
+    rows.push({
+      ...row,
+      werAudioBase64,
+    });
+  }
+
+  return {
+    ...report,
+    rows,
+  };
+}
+
+async function attachWerAudioChunksFromPager(report) {
+  const rows = [];
+  const expectedChunks = [];
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      continue;
+    }
+
+    const chunkCount = Number(row.werAudioChunkCount || 0);
+    const rowSlug = automationSlug(row.model);
+    for (let index = 0; index < chunkCount; index += 1) {
+      expectedChunks.push({
+        key: `${rowSlug}-${index}`,
+        row,
+        index,
+        chunkCount,
+      });
+    }
+  }
+
+  const chunksByModel = new Map(
+    (report.rows || []).map((row) => [row.model, []])
+  );
+
+  for (let globalIndex = 0; globalIndex < expectedChunks.length; globalIndex += 1) {
+    const expected = expectedChunks[globalIndex];
+    await waitForAudioPagerKey(expected.key, globalIndex, expectedChunks.length);
+
+    const chunk = await readElementText("benchmark-audio-current");
+    if (!chunk) {
+      throw new Error(
+        `Missing WER audio chunk ${expected.index + 1}/${expected.chunkCount} for ${expected.row.model} (${expected.key}).`
+      );
+    }
+
+    chunksByModel.get(expected.row.model).push(chunk);
+
+    if (globalIndex < expectedChunks.length - 1) {
+      await $("~benchmark-audio-next").click();
+    }
+  }
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      rows.push(row);
+      continue;
+    }
+
+    const chunks = chunksByModel.get(row.model) || [];
+    const werAudioBase64 = chunks.join("");
+    if (
+      Number.isFinite(row.werAudioBase64Length) &&
+      werAudioBase64.length !== row.werAudioBase64Length
+    ) {
+      throw new Error(
+        `WER audio length mismatch for ${row.model}: expected ${row.werAudioBase64Length}, got ${werAudioBase64.length}.`
+      );
+    }
+
+    rows.push({
+      ...row,
+      werAudioBase64,
+    });
+  }
+
+  return {
+    ...report,
+    rows,
+  };
+}
+
+async function waitForAudioPagerKey(expectedKey, globalIndex, totalChunks) {
+  const startedAt = Date.now();
+  let lastKey = "";
+
+  while (Date.now() - startedAt < 10_000) {
+    lastKey = await readElementText("benchmark-audio-current-key");
+    if (lastKey === expectedKey) {
+      return;
+    }
+
+    await browser.pause(250);
+  }
+
+  throw new Error(
+    `WER audio pager mismatch at chunk ${globalIndex + 1}/${totalChunks}: expected ${expectedKey}, got ${lastKey || "empty"}.`
+  );
+}
+
+async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
+  const report = await readBenchmarkReport("benchmark-json-display");
+
+  if (!report || !includeAudio) {
+    return report;
+  }
+
+  return attachWerAudioChunks(report);
 }
 
 function markPartialReport(report, timeoutMessage) {
@@ -198,7 +415,7 @@ async function waitForBenchmarkReport(timeoutMs) {
     if (report) {
       lastReport = report;
       if (hasFinishedBenchmark(report)) {
-        return report;
+        return (await getBenchmarkReportFromUi({ includeAudio: true })) || report;
       }
     }
 
@@ -289,6 +506,20 @@ describe("KittenTTS React Native benchmark", () => {
           throw new Error(
             `Invalid sample hash for ${expectedModel}: ${row.sampleHash}`
           );
+        }
+        if (process.env.TESTMU_REQUIRE_WER_AUDIO === "true") {
+          expect(row.werReferenceText).toBe(report.sampleText);
+          expect(row.werAudioFormat).toBe("wav-base64");
+          expect(row.werAudioSampleRate).toBe(24000);
+          expect(row.werAudioChunkCount).toBeGreaterThan(0);
+          expect(row.werAudioBase64Length).toBeGreaterThan(1000);
+          if (typeof row.werAudioBase64 !== "string") {
+            throw new Error(
+              `Missing attached WER audio for ${expectedModel}; expected ${row.werAudioChunkCount} chunk(s) and ${row.werAudioBase64Length} base64 characters.`
+            );
+          }
+          expect(row.werAudioBase64.length).toBe(row.werAudioBase64Length);
+          expect(row.parakeetStatus).toBe("pending");
         }
       } else {
         expect(row.failedStage.length).toBeGreaterThan(0);

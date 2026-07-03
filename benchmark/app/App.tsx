@@ -1,4 +1,10 @@
-import React, {useState, useCallback, useEffect, useRef} from 'react';
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -63,6 +69,18 @@ type BenchmarkRow = {
   sampleCount?: number;
   sampleRate?: number;
   sampleHash?: string;
+  werReferenceText?: string;
+  werAudioFormat?: 'wav-base64';
+  werAudioSampleRate?: number;
+  werAudioBase64?: string;
+  werAudioBase64Length?: number;
+  werAudioChunkCount?: number;
+  werAudioChunkSize?: number;
+  parakeetTranscript?: string;
+  parakeetWer?: number;
+  parakeetWerPercent?: number;
+  parakeetStatus?: 'pending' | 'passed' | 'failed' | 'skipped';
+  parakeetErrorSummary?: string;
   failedStage?: string;
   errorSummary?: string;
 };
@@ -89,6 +107,7 @@ const MODELS: KittenModel[] = [
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
+const WER_AUDIO_CHUNK_SIZE = Platform.OS === 'android' ? 16000 : 64000;
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -96,6 +115,13 @@ function e2eTextProps(testID: string) {
   }
 
   return {testID};
+}
+
+function automationSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
 }
 
 function makeFailedBenchmarkRow(
@@ -123,7 +149,8 @@ export default function App() {
   const mountedRef = useRef(true);
   const [state, setState] = useState<AppState>({kind: 'idle'});
   const [inputText, setInputText] = useState(
-    'Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.',
+    'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
+      'This benchmark compares every model for speed, quality, and consistency.',
   );
   const [selectedModel, setSelectedModel] = useState(KittenModel.Nano);
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);
@@ -365,6 +392,7 @@ export default function App() {
           const warmRtf = warmGenerationSeconds.map(seconds =>
             durationSeconds > 0 ? seconds / durationSeconds : 0,
           );
+          const wavBase64 = getWavBase64(res);
 
           rows[index] = {
             model: String(model),
@@ -402,6 +430,16 @@ export default function App() {
             sampleCount: res.samples.length,
             sampleRate: res.sampleRate,
             sampleHash: computeSampleHash(res.samples),
+            werReferenceText: sampleText,
+            werAudioFormat: 'wav-base64',
+            werAudioSampleRate: res.sampleRate,
+            werAudioBase64: wavBase64,
+            werAudioBase64Length: wavBase64?.length,
+            werAudioChunkCount: wavBase64
+              ? Math.ceil(wavBase64.length / WER_AUDIO_CHUNK_SIZE)
+              : 0,
+            werAudioChunkSize: WER_AUDIO_CHUNK_SIZE,
+            parakeetStatus: 'pending',
           };
           publishReport();
           lastResult = res;
@@ -731,6 +769,8 @@ function StatusBanner({state}: {state: AppState}) {
 }
 
 function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
+  const displayReport = JSON.stringify(stripBenchmarkAudio(report));
+
   return (
     <View
       style={styles.resultCard}
@@ -753,6 +793,7 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
           {report.characterLength}
         </Text>
       </View>
+      <BenchmarkAudioChunks report={report} />
       {report.rows.map(row => (
         <View
           key={row.model}
@@ -773,12 +814,113 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
       ))}
       <Text
         style={styles.benchmarkJson}
-        {...e2eTextProps('benchmark-json')}
+        {...e2eTextProps('benchmark-json-display')}
         selectable>
-        {JSON.stringify(report)}
+        {displayReport}
       </Text>
     </View>
   );
+}
+
+function BenchmarkAudioChunks({report}: {report: BenchmarkReport}) {
+  const audioChunks = useMemo(() => {
+    return report.rows.flatMap(row => {
+      if (row.status !== 'passed' || !row.werAudioBase64) {
+        return [];
+      }
+
+      const rowSlug = automationSlug(row.model);
+      const chunks = [];
+      for (
+        let offset = 0, index = 0;
+        offset < row.werAudioBase64.length;
+        offset += WER_AUDIO_CHUNK_SIZE, index += 1
+      ) {
+        chunks.push({
+          key: `${rowSlug}-${index}`,
+          value: row.werAudioBase64.slice(
+            offset,
+            offset + WER_AUDIO_CHUNK_SIZE,
+          ),
+        });
+      }
+
+      return chunks;
+    });
+  }, [report.rows]);
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+
+  useEffect(() => {
+    setCurrentChunkIndex(0);
+  }, [report.finishedAt]);
+
+  if (Platform.OS === 'android') {
+    const currentChunk = audioChunks[currentChunkIndex];
+
+    return (
+      <View style={styles.benchmarkAudioPager}>
+        <Text
+          style={styles.benchmarkAudioCurrentKey}
+          {...e2eTextProps('benchmark-audio-current-key')}
+          selectable>
+          {currentChunk?.key ?? ''}
+        </Text>
+        <Text
+          style={styles.benchmarkAudioCurrentChunk}
+          {...e2eTextProps('benchmark-audio-current')}
+          selectable>
+          {currentChunk?.value ?? ''}
+        </Text>
+        <TouchableOpacity
+          style={styles.benchmarkAudioNextButton}
+          {...e2eTextProps('benchmark-audio-next')}
+          disabled={currentChunkIndex >= audioChunks.length - 1}
+          onPress={() =>
+            setCurrentChunkIndex(index =>
+              Math.min(index + 1, Math.max(audioChunks.length - 1, 0)),
+            )
+          }>
+          <Text style={styles.benchmarkAudioNextText}>Next audio chunk</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.benchmarkAudioChunks} pointerEvents="none">
+      {audioChunks.map(chunk => (
+        <Text
+          key={chunk.key}
+          style={styles.benchmarkAudioChunk}
+          {...e2eTextProps(`benchmark-audio-${chunk.key}`)}
+          selectable>
+          {chunk.value}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function stripBenchmarkAudio(report: BenchmarkReport): BenchmarkReport {
+  return {
+    ...report,
+    rows: report.rows.map(row => {
+      const {werAudioBase64: _werAudioBase64, ...rest} = row;
+      return rest;
+    }),
+  };
+}
+
+function getWavBase64(result: KittenTTSResult): string | undefined {
+  try {
+    if (typeof result.wavBase64 === 'function') {
+      return result.wavBase64();
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }
 
 function ResultCard({result}: {result: KittenTTSResult}) {
@@ -1049,5 +1191,42 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     fontSize: 10,
     marginTop: 12,
+  },
+  benchmarkAudioChunks: {
+    marginTop: 1,
+  },
+  benchmarkAudioPager: {
+    marginTop: 1,
+  },
+  benchmarkAudioCurrentKey: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    lineHeight: 8,
+  },
+  benchmarkAudioCurrentChunk: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    includeFontPadding: false,
+    lineHeight: 8,
+    overflow: 'hidden',
+  },
+  benchmarkAudioNextButton: {
+    height: 8,
+  },
+  benchmarkAudioNextText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    lineHeight: 8,
+  },
+  benchmarkAudioChunk: {
+    color: '#FFFFFF',
+    fontSize: Platform.OS === 'android' ? 1 : 8,
+    height: Platform.OS === 'android' ? 1 : 8,
+    includeFontPadding: false,
+    lineHeight: Platform.OS === 'android' ? 1 : 8,
+    opacity: Platform.OS === 'android' ? 0.01 : 1,
   },
 });
