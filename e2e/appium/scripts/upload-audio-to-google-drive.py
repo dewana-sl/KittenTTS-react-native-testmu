@@ -222,12 +222,22 @@ def upload_reports(args: argparse.Namespace) -> None:
     if not files:
         return
 
-    service = None if args.dry_run else build_drive_service()
     setup_error = None
-    if not args.dry_run and not service:
-        setup_error = "Google Drive upload is not configured."
-    if not args.dry_run and not args.root_folder_id:
-        setup_error = "GOOGLE_DRIVE_ROOT_FOLDER_ID is not configured."
+    service = None
+    if not args.dry_run:
+        has_credentials = bool(service_account_info())
+        if not has_credentials and not args.root_folder_id:
+            setup_error = (
+                "GOOGLE_SERVICE_ACCOUNT_JSON and GOOGLE_DRIVE_ROOT_FOLDER_ID are not configured."
+            )
+        elif not has_credentials:
+            setup_error = "GOOGLE_SERVICE_ACCOUNT_JSON is not configured."
+        elif not args.root_folder_id:
+            setup_error = "GOOGLE_DRIVE_ROOT_FOLDER_ID is not configured."
+        else:
+            service = build_drive_service()
+            if not service:
+                setup_error = "Google Drive upload is not configured."
 
     pr_name = pr_folder_name(args)
     pr_folder_id = None
