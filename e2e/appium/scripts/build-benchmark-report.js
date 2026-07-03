@@ -64,9 +64,30 @@ function getTotalRuntimeSeconds(report) {
 
 function formatTotalRuntime(report) {
   const runtime = getTotalRuntimeSeconds(report);
-  return Number.isFinite(runtime)
-    ? `${formatNumber(runtime, 1)}s`
-    : "unavailable";
+  return formatDuration(runtime);
+}
+
+function formatDuration(seconds) {
+  const value = Number(seconds);
+  if (!Number.isFinite(value)) {
+    return "unavailable";
+  }
+
+  if (value < 60) {
+    return `${formatNumber(value, 1)}s`;
+  }
+
+  const wholeSeconds = Math.round(value);
+  const minutes = Math.floor(wholeSeconds / 60);
+  const remainingSeconds = wholeSeconds % 60;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${remainingMinutes}m ${remainingSeconds}s`;
+  }
+
+  return `${minutes}m ${remainingSeconds}s`;
 }
 
 function formatLogLink(report) {
