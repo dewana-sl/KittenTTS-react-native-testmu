@@ -1,4 +1,10 @@
-import React, {useState, useCallback, useEffect, useRef} from 'react';
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -817,33 +823,80 @@ function BenchmarkReportCard({report}: {report: BenchmarkReport}) {
 }
 
 function BenchmarkAudioChunks({report}: {report: BenchmarkReport}) {
+  const audioChunks = useMemo(() => {
+    return report.rows.flatMap(row => {
+      if (row.status !== 'passed' || !row.werAudioBase64) {
+        return [];
+      }
+
+      const rowSlug = automationSlug(row.model);
+      const chunks = [];
+      for (
+        let offset = 0, index = 0;
+        offset < row.werAudioBase64.length;
+        offset += WER_AUDIO_CHUNK_SIZE, index += 1
+      ) {
+        chunks.push({
+          key: `${rowSlug}-${index}`,
+          value: row.werAudioBase64.slice(
+            offset,
+            offset + WER_AUDIO_CHUNK_SIZE,
+          ),
+        });
+      }
+
+      return chunks;
+    });
+  }, [report.rows]);
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+
+  useEffect(() => {
+    setCurrentChunkIndex(0);
+  }, [report.finishedAt]);
+
+  if (Platform.OS === 'android') {
+    const currentChunk = audioChunks[currentChunkIndex];
+
+    return (
+      <View style={styles.benchmarkAudioPager}>
+        <Text
+          style={styles.benchmarkAudioCurrentKey}
+          {...e2eTextProps('benchmark-audio-current-key')}
+          selectable>
+          {currentChunk?.key ?? ''}
+        </Text>
+        <Text
+          style={styles.benchmarkAudioCurrentChunk}
+          {...e2eTextProps('benchmark-audio-current')}
+          selectable>
+          {currentChunk?.value ?? ''}
+        </Text>
+        <TouchableOpacity
+          style={styles.benchmarkAudioNextButton}
+          {...e2eTextProps('benchmark-audio-next')}
+          disabled={currentChunkIndex >= audioChunks.length - 1}
+          onPress={() =>
+            setCurrentChunkIndex(index =>
+              Math.min(index + 1, Math.max(audioChunks.length - 1, 0)),
+            )
+          }>
+          <Text style={styles.benchmarkAudioNextText}>Next audio chunk</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.benchmarkAudioChunks} pointerEvents="none">
-      {report.rows.flatMap(row => {
-        if (row.status !== 'passed' || !row.werAudioBase64) {
-          return [];
-        }
-
-        const rowSlug = automationSlug(row.model);
-        const chunks = [];
-        for (
-          let offset = 0, index = 0;
-          offset < row.werAudioBase64.length;
-          offset += WER_AUDIO_CHUNK_SIZE, index += 1
-        ) {
-          chunks.push(
-            <Text
-              key={`${row.model}-${index}`}
-              style={styles.benchmarkAudioChunk}
-              {...e2eTextProps(`benchmark-audio-${rowSlug}-${index}`)}
-              selectable>
-              {row.werAudioBase64.slice(offset, offset + WER_AUDIO_CHUNK_SIZE)}
-            </Text>,
-          );
-        }
-
-        return chunks;
-      })}
+      {audioChunks.map(chunk => (
+        <Text
+          key={chunk.key}
+          style={styles.benchmarkAudioChunk}
+          {...e2eTextProps(`benchmark-audio-${chunk.key}`)}
+          selectable>
+          {chunk.value}
+        </Text>
+      ))}
     </View>
   );
 }
@@ -1141,6 +1194,32 @@ const styles = StyleSheet.create({
   },
   benchmarkAudioChunks: {
     marginTop: 1,
+  },
+  benchmarkAudioPager: {
+    marginTop: 1,
+  },
+  benchmarkAudioCurrentKey: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    lineHeight: 8,
+  },
+  benchmarkAudioCurrentChunk: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    includeFontPadding: false,
+    lineHeight: 8,
+    overflow: 'hidden',
+  },
+  benchmarkAudioNextButton: {
+    height: 8,
+  },
+  benchmarkAudioNextText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    height: 8,
+    lineHeight: 8,
   },
   benchmarkAudioChunk: {
     color: '#FFFFFF',

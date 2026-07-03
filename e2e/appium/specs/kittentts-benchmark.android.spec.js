@@ -111,6 +111,10 @@ async function readElementText(accessibilityId) {
 async function attachWerAudioChunks(report) {
   const rows = [];
 
+  if (!isIosSession()) {
+    return attachWerAudioChunksFromPager(report);
+  }
+
   for (const row of report.rows || []) {
     if (row.status !== "passed") {
       rows.push(row);
@@ -156,6 +160,96 @@ async function attachWerAudioChunks(report) {
     ...report,
     rows,
   };
+}
+
+async function attachWerAudioChunksFromPager(report) {
+  const rows = [];
+  const expectedChunks = [];
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      continue;
+    }
+
+    const chunkCount = Number(row.werAudioChunkCount || 0);
+    const rowSlug = automationSlug(row.model);
+    for (let index = 0; index < chunkCount; index += 1) {
+      expectedChunks.push({
+        key: `${rowSlug}-${index}`,
+        row,
+        index,
+        chunkCount,
+      });
+    }
+  }
+
+  const chunksByModel = new Map(
+    (report.rows || []).map((row) => [row.model, []])
+  );
+
+  for (let globalIndex = 0; globalIndex < expectedChunks.length; globalIndex += 1) {
+    const expected = expectedChunks[globalIndex];
+    await waitForAudioPagerKey(expected.key, globalIndex, expectedChunks.length);
+
+    const chunk = await readElementText("benchmark-audio-current");
+    if (!chunk) {
+      throw new Error(
+        `Missing WER audio chunk ${expected.index + 1}/${expected.chunkCount} for ${expected.row.model} (${expected.key}).`
+      );
+    }
+
+    chunksByModel.get(expected.row.model).push(chunk);
+
+    if (globalIndex < expectedChunks.length - 1) {
+      await $("~benchmark-audio-next").click();
+    }
+  }
+
+  for (const row of report.rows || []) {
+    if (row.status !== "passed") {
+      rows.push(row);
+      continue;
+    }
+
+    const chunks = chunksByModel.get(row.model) || [];
+    const werAudioBase64 = chunks.join("");
+    if (
+      Number.isFinite(row.werAudioBase64Length) &&
+      werAudioBase64.length !== row.werAudioBase64Length
+    ) {
+      throw new Error(
+        `WER audio length mismatch for ${row.model}: expected ${row.werAudioBase64Length}, got ${werAudioBase64.length}.`
+      );
+    }
+
+    rows.push({
+      ...row,
+      werAudioBase64,
+    });
+  }
+
+  return {
+    ...report,
+    rows,
+  };
+}
+
+async function waitForAudioPagerKey(expectedKey, globalIndex, totalChunks) {
+  const startedAt = Date.now();
+  let lastKey = "";
+
+  while (Date.now() - startedAt < 10_000) {
+    lastKey = await readElementText("benchmark-audio-current-key");
+    if (lastKey === expectedKey) {
+      return;
+    }
+
+    await browser.pause(250);
+  }
+
+  throw new Error(
+    `WER audio pager mismatch at chunk ${globalIndex + 1}/${totalChunks}: expected ${expectedKey}, got ${lastKey || "empty"}.`
+  );
 }
 
 async function getBenchmarkReportFromUi({ includeAudio = false } = {}) {
