@@ -33,10 +33,12 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  ios-unsigned-package-test:
-    name: Benchmark app iOS on TestMu
+  ios-unsigned-package:
+    name: Benchmark app iOS unsigned IPA
     runs-on: macos-latest
     needs: sdk
+    outputs:
+      app_url: ${{ steps.upload-unsigned-ios-app.outputs.app_url }}
 
     steps:
       - uses: actions/checkout@v4
@@ -197,21 +199,44 @@ jobs:
 
           echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
 
+  testmu-ios-benchmark:
+    name: TestMu iOS benchmark (${{ matrix.device }})
+    runs-on: ubuntu-latest
+    needs: ios-unsigned-package
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - slug: iphone-14
+            device: iPhone 14
+            version: "16"
+          - slug: ipad-air-2022
+            device: iPad Air (2022)
+            version: "16"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
       - name: Install Appium harness
         run: npm ci
         working-directory: e2e/appium
 
-      - name: Run TestMu iPhone 14 benchmark with unsigned IPA
+      - name: Run TestMu iOS benchmark with unsigned IPA
         timeout-minutes: 40
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_IOS_APP_URL: ${{ steps.upload-unsigned-ios-app.outputs.app_url }}
-          TESTMU_DEVICE: iPhone 14
+          TESTMU_IOS_APP_URL: ${{ needs.ios-unsigned-package.outputs.app_url }}
+          TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: iOS
-          TESTMU_PLATFORM_VERSION: "16"
-          TESTMU_IOS_DEVICE: iPhone 14
-          TESTMU_IOS_VERSION: "16"
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_IOS_DEVICE: ${{ matrix.device }}
+          TESTMU_IOS_VERSION: ${{ matrix.version }}
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
           TESTMU_REQUIRE_WER_AUDIO: true
@@ -226,14 +251,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: testmu-benchmark-ios-unsigned-iphone-14
+          name: testmu-benchmark-ios-${{ matrix.slug }}
           path: e2e/appium/reports/*
           if-no-files-found: warn
 
   android-example:
     name: Benchmark app Android release APK
     runs-on: ubuntu-latest
-    needs: ios-unsigned-package-test
+    needs: testmu-ios-benchmark
 
     steps:
       - uses: actions/checkout@v4
@@ -484,7 +509,7 @@ jobs:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
-      - ios-unsigned-package-test
+      - testmu-ios-benchmark
       - upload-testmu-app
       - testmu-android-benchmark
     if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
