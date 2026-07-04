@@ -11,9 +11,10 @@ The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 5. Uploads the APK once to LambdaTest/TestMu.
 6. Runs the same Appium benchmark on four Android real-device configs one after another.
 7. Collects one JSON result per device.
-8. Optionally transcribes each generated WAV with NVIDIA Parakeet and computes word error rate.
-9. Builds Markdown, CSV, and JSON summary reports.
-10. Posts or updates the benchmark table as a PR comment.
+8. Optionally uploads each generated WAV to Google Drive and records a listen link.
+9. Optionally transcribes each generated WAV with NVIDIA Parakeet and computes word error rate.
+10. Builds Markdown, CSV, and JSON summary reports.
+11. Posts or updates the benchmark table as a PR comment.
 
 KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
@@ -24,10 +25,13 @@ Add these in GitHub under `Settings -> Secrets and variables -> Actions`:
 - `LT_USERNAME`
 - `LT_ACCESS_KEY`
 - `NVIDIA_API_KEY` if you want Parakeet WER values
+- `GOOGLE_SERVICE_ACCOUNT_JSON` if you want Drive-hosted WAV listen links
 
 Without these secrets, the SDK tests still run but the TestMu device jobs cannot upload apps.
 
 Without `NVIDIA_API_KEY`, the report still passes and marks Parakeet WER as skipped. This keeps the device benchmark usable in forks while making WER available when the NVIDIA-hosted Parakeet ASR credential is configured.
+
+Without `GOOGLE_SERVICE_ACCOUNT_JSON`, the report still passes and marks audio upload as skipped. Store the full service-account JSON file contents in the secret; do not commit the JSON file.
 
 The Android cloud run uses a release APK because React Native debug APKs expect a Metro server. A release APK is self-contained and can launch on a LambdaTest real device.
 
@@ -58,6 +62,8 @@ Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/wor
 Add this under `Settings -> Secrets and variables -> Actions -> Variables` if you want a different benchmark sentence:
 
 - `TESTMU_SAMPLE_TEXT`
+- `GOOGLE_DRIVE_ROOT_FOLDER_ID` if Drive-hosted WAV listen links are enabled
+- `GOOGLE_DRIVE_PUBLIC_AUDIO=true` if each uploaded WAV should be shared with anyone who has the link
 
 Default sample text:
 
@@ -66,6 +72,26 @@ Hello! Welcome to KittenTTS, a fast on-device text-to-speech engine.
 ```
 
 The report records the exact sample text and character length so results from different runs can be compared honestly.
+
+## Google Drive Audio Links
+
+When `GOOGLE_SERVICE_ACCOUNT_JSON` and `GOOGLE_DRIVE_ROOT_FOLDER_ID` are configured, the final report job uploads the generated WAV for every passed model before the base64 audio payload is stripped from the JSON artifacts.
+
+The Drive uploader creates or reuses this folder layout under `GOOGLE_DRIVE_ROOT_FOLDER_ID`:
+
+```text
+Flutter SDK/
+Web SDK/
+Swift SDK/
+RN SDK/
+  PR #002/
+    pixel-5__kitten-tts-nano__af6b1ce3.wav
+Python SDK/
+```
+
+The RN benchmark uses the `RN SDK` folder and a zero-padded pull request folder like `PR #002`. The report table shows each audio URL as a compact `Listen` hyperlink instead of printing the full Drive URL. The CSV and JSON reports keep the raw `audioListenUrl`, `audioDriveFileId`, upload status, and any upload error summary for debugging.
+
+Use a Google Shared Drive folder as the root when authenticating with a service account. Google service accounts do not have personal Drive storage quota and cannot upload non-empty files into a normal user's My Drive folder, even when that folder is shared with the service account. Share the Shared Drive or a folder inside it with the service account email as a content manager/editor. If the root folder is not publicly shared, only people with Drive access can open the `Listen` links unless `GOOGLE_DRIVE_PUBLIC_AUDIO=true` is set.
 
 ## Benchmark Criteria
 
@@ -97,8 +123,8 @@ The final report job combines those files into:
 
 `summary.md` and the PR comment include common run details plus one table per device:
 
-| Model | First gen (s) | Best warm (s) | Warm p50 (s) | Warm p95 (s) | Best RTF | Warm p50 RTF | Warm p95 RTF | Parakeet WER | Transcript / Error | Audio (s) | Samples | Sample hash |
-| ----- | ------------: | ------------: | -----------: | -----------: | -------: | -----------: | -----------: | -----------: | ------------------ | --------: | ------: | ----------- |
+| Model | Status | First gen (s) | Best warm (s) | Warm p50/p95 (s) | Best RTF | Warm p50/p95 RTF | Audio (s) | Listen |
+| ----- | ------ | ------------: | ------------: | ----------------: | -------: | ---------------: | --------: | ------ |
 
 For each model, the app does one warm-up generation and then five measured warm generations. The main `Best warm` and `Best RTF` columns use the fastest of those five measured warm runs. The `Warm p50` and `Warm p95` columns show the median-ish and tail latency across the same five warm runs.
 

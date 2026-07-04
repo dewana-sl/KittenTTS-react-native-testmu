@@ -499,6 +499,22 @@ jobs:
           path: benchmark-results
           merge-multiple: true
 
+      - name: Upload benchmark WAV audio to Google Drive
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_DRIVE_ROOT_FOLDER_ID: ${{ vars.GOOGLE_DRIVE_ROOT_FOLDER_ID }}
+          GOOGLE_DRIVE_PUBLIC_AUDIO: ${{ vars.GOOGLE_DRIVE_PUBLIC_AUDIO || 'false' }}
+          GITHUB_EVENT_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
+          TESTMU_SDK_FOLDER: RN SDK
+        run: |
+          if [ -n "$GOOGLE_SERVICE_ACCOUNT_JSON" ] && [ -n "$GOOGLE_DRIVE_ROOT_FOLDER_ID" ]; then
+            python3 -m pip install --upgrade pip
+            python3 -m pip install google-api-python-client==2.177.0 google-auth==2.40.3
+          else
+            echo "Google Drive upload is not configured; audio links will be marked skipped."
+          fi
+          python3 e2e/appium/scripts/upload-audio-to-google-drive.py benchmark-results
+
       - name: Annotate WER with Parakeet
         env:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}

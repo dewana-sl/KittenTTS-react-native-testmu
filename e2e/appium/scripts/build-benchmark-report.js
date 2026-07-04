@@ -135,6 +135,35 @@ function formatTranscript(row) {
   return escapeMarkdown(row.parakeetErrorSummary || "");
 }
 
+function formatAudioLink(row) {
+  if (row.audioListenUrl) {
+    return `[Listen](${row.audioListenUrl})`;
+  }
+
+  if (row.audioUploadStatus === "failed") {
+    return `Upload failed: ${escapeMarkdown(row.audioUploadErrorSummary || "")}`;
+  }
+
+  if (row.audioUploadStatus === "skipped") {
+    return `Skipped: ${escapeMarkdown(row.audioUploadErrorSummary || "")}`;
+  }
+
+  return "";
+}
+
+function formatAudioFolder(reports) {
+  const report = reports.find(
+    (item) =>
+      item.audioUpload?.folderUrl &&
+      Number(item.audioUpload.uploadedRows || 0) > 0
+  );
+  if (!report) {
+    return "";
+  }
+
+  return `[Open folder](${report.audioUpload.folderUrl})`;
+}
+
 function countPassedRows(report) {
   return (report.rows || []).filter((row) => row.status === "passed").length;
 }
@@ -224,8 +253,8 @@ function buildDeviceTable(report) {
     "",
     "#### Performance",
     "",
-    "| Model | Status | First gen (s) | Best warm (s) | Warm p50/p95 (s) | Best RTF | Warm p50/p95 RTF | Audio (s) |",
-    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    "| Model | Status | First gen (s) | Best warm (s) | Warm p50/p95 (s) | Best RTF | Warm p50/p95 RTF | Audio (s) | Listen |",
+    "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
   ];
 
   for (const row of report.rows || []) {
@@ -233,7 +262,7 @@ function buildDeviceTable(report) {
       lines.push(
         `| ${escapeMarkdown(
           row.modelDisplayName || row.model
-        )} | Failed |  |  |  |  |  |  |`
+        )} | Failed |  |  |  |  |  |  | ${formatAudioLink(row)} |`
       );
       continue;
     }
@@ -249,7 +278,7 @@ function buildDeviceTable(report) {
         row.warmP50Rtf
       )} / ${formatNumber(row.warmP95Rtf)} | ${formatNumber(
         row.durationSeconds
-      )} |`
+      )} | ${formatAudioLink(row)} |`
     );
   }
 
@@ -311,6 +340,7 @@ function buildSummary(reports) {
     completedReports[0] ||
     partialReports.find((report) => report.voice || report.voiceDisplayName) ||
     first;
+  const audioFolder = formatAudioFolder(reports);
   const lines = [
     "# KittenTTS TestMu Benchmark Report",
     "",
@@ -328,6 +358,7 @@ function buildSummary(reports) {
     } |`,
     `| Devices completed / partial / failed | ${completedReports.length} / ${partialReports.length} / ${failedReports.length} |`,
     `| Parakeet WER rows | ${summarizeParakeetWer(reports)} |`,
+    `| Audio files | ${audioFolder || summarizeAudioUpload(reports)} |`,
     `| WER normalization | Treats punctuation/case as insignificant and normalizes KittenTTS == Kitten TTS. |`,
     `| GitHub run | ${
       process.env.GITHUB_RUN_ID || first.githubRunId || "local"
@@ -347,6 +378,29 @@ function buildSummary(reports) {
   }
 
   return lines.join("\n");
+}
+
+function summarizeAudioUpload(reports) {
+  const uploads = reports
+    .map((report) => report.audioUpload)
+    .filter(Boolean);
+  if (uploads.length === 0) {
+    return "unavailable";
+  }
+
+  const uploaded = uploads.reduce(
+    (sum, upload) => sum + Number(upload.uploadedRows || 0),
+    0
+  );
+  const skipped = uploads.reduce(
+    (sum, upload) => sum + Number(upload.skippedRows || 0),
+    0
+  );
+  const failed = uploads.reduce(
+    (sum, upload) => sum + Number(upload.failedRows || 0),
+    0
+  );
+  return `${uploaded} uploaded, ${skipped} skipped, ${failed} failed`;
 }
 
 function summarizeParakeetWer(reports) {
@@ -399,6 +453,11 @@ function buildCsv(reports) {
     "sampleCount",
     "sampleRate",
     "sampleHash",
+    "audioUploadStatus",
+    "audioListenUrl",
+    "audioFileName",
+    "audioDriveFileId",
+    "audioUploadErrorSummary",
     "status",
     "failedStage",
     "errorSummary",
@@ -475,6 +534,11 @@ function buildCsv(reports) {
           row.sampleCount,
           row.sampleRate,
           row.sampleHash,
+          row.audioUploadStatus || "",
+          row.audioListenUrl || "",
+          row.audioFileName || "",
+          row.audioDriveFileId || "",
+          row.audioUploadErrorSummary || "",
           row.status || "passed",
           row.failedStage || "",
           row.errorSummary || "",
