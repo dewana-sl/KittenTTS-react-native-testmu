@@ -67,20 +67,6 @@ function usableElementText(candidate, accessibilityId) {
 async function readElementText(accessibilityId) {
   const element = await $(`~${accessibilityId}`);
 
-  if (!isIosSession()) {
-    const candidates = [
-      await element.getText().catch(() => ""),
-      await element.getAttribute("text").catch(() => ""),
-      await element.getAttribute("label").catch(() => ""),
-      await element.getAttribute("value").catch(() => ""),
-    ];
-
-    return (
-      candidates.find((candidate) => usableElementText(candidate, accessibilityId)) ||
-      ""
-    );
-  }
-
   const firstText = usableElementText(
     await element.getText().catch(() => ""),
     accessibilityId
@@ -108,12 +94,69 @@ async function readElementText(accessibilityId) {
   return "";
 }
 
+function shouldUseAudioPager(report) {
+  const mode = String(
+    process.env.TESTMU_AUDIO_EXTRACTION_MODE || "auto"
+  ).toLowerCase();
+  if (mode === "pager") return true;
+  if (mode === "direct") return false;
+  if (isIosSession()) return false;
+
+  const version = Number.parseFloat(
+    String(
+      report?.platformVersion ||
+        browser?.capabilities?.platformVersion ||
+        browser?.requestedCapabilities?.platformVersion ||
+        process.env.TESTMU_ANDROID_VERSION ||
+        ""
+    )
+  );
+
+  return !Number.isFinite(version) || version < 12;
+}
+
+function countExpectedAudioChunks(report) {
+  return (report.rows || []).reduce(
+    (total, row) =>
+      row.status === "passed" ? total + Number(row.werAudioChunkCount || 0) : total,
+    0
+  );
+}
+
 async function attachWerAudioChunks(report) {
   const rows = [];
+  const usePager = shouldUseAudioPager(report);
+  const extractionMode = usePager ? "pager" : "direct";
 
-  if (!isIosSession()) {
+  console.log(
+    `Using ${extractionMode} WER audio extraction for ${report.device || "device"} ` +
+      `(${report.platformName || "platform"} ${report.platformVersion || "unknown"}), ` +
+      `${countExpectedAudioChunks(report)} chunk(s).`
+  );
+
+  if (usePager) {
     return attachWerAudioChunksFromPager(report);
   }
+
+  try {
+    return await attachWerAudioChunksDirect(report);
+  } catch (error) {
+    if (
+      isIosSession() ||
+      process.env.TESTMU_AUDIO_EXTRACTION_MODE === "direct"
+    ) {
+      throw error;
+    }
+
+    console.warn(
+      `Direct WER audio extraction failed, falling back to pager: ${error.message}`
+    );
+    return attachWerAudioChunksFromPager(report);
+  }
+}
+
+async function attachWerAudioChunksDirect(report) {
+  const rows = [];
 
   for (const row of report.rows || []) {
     if (row.status !== "passed") {
