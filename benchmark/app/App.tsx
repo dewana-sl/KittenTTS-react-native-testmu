@@ -107,7 +107,8 @@ const MODELS: KittenModel[] = [
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const BENCHMARK_WARM_RUNS = 5;
-const WER_AUDIO_CHUNK_SIZE = Platform.OS === 'android' ? 16000 : 64000;
+const WER_AUDIO_CHUNK_SIZE = 64000;
+const ANDROID_DIRECT_AUDIO_MIN_API = 31;
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -122,6 +123,12 @@ function automationSlug(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+function androidApiVersion() {
+  return typeof Platform.Version === 'number'
+    ? Platform.Version
+    : Number.parseInt(String(Platform.Version), 10) || 0;
 }
 
 function makeFailedBenchmarkRow(
@@ -854,7 +861,27 @@ function BenchmarkAudioChunks({report}: {report: BenchmarkReport}) {
     setCurrentChunkIndex(0);
   }, [report.finishedAt]);
 
-  if (Platform.OS === 'android') {
+  const directChunks = (
+    <View style={styles.benchmarkAudioChunks} pointerEvents="none">
+      {audioChunks.map(chunk => (
+        <Text
+          key={chunk.key}
+          style={styles.benchmarkAudioChunk}
+          {...e2eTextProps(`benchmark-audio-${chunk.key}`)}
+          selectable>
+          {chunk.value}
+        </Text>
+      ))}
+    </View>
+  );
+
+  if (Platform.OS !== 'android') {
+    return directChunks;
+  }
+
+  const shouldRenderDirectChunks =
+    androidApiVersion() >= ANDROID_DIRECT_AUDIO_MIN_API;
+  const pager = (() => {
     const currentChunk = audioChunks[currentChunkIndex];
 
     return (
@@ -884,20 +911,13 @@ function BenchmarkAudioChunks({report}: {report: BenchmarkReport}) {
         </TouchableOpacity>
       </View>
     );
-  }
+  })();
 
   return (
-    <View style={styles.benchmarkAudioChunks} pointerEvents="none">
-      {audioChunks.map(chunk => (
-        <Text
-          key={chunk.key}
-          style={styles.benchmarkAudioChunk}
-          {...e2eTextProps(`benchmark-audio-${chunk.key}`)}
-          selectable>
-          {chunk.value}
-        </Text>
-      ))}
-    </View>
+    <>
+      {shouldRenderDirectChunks && directChunks}
+      {pager}
+    </>
   );
 }
 
@@ -905,7 +925,8 @@ function stripBenchmarkAudio(report: BenchmarkReport): BenchmarkReport {
   return {
     ...report,
     rows: report.rows.map(row => {
-      const {werAudioBase64: _werAudioBase64, ...rest} = row;
+      const rest = {...row};
+      delete rest.werAudioBase64;
       return rest;
     }),
   };
