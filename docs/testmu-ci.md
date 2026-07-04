@@ -6,15 +6,16 @@ The workflow lives in `.github/workflows/rn-ci.yml` and does this:
 
 1. Runs the SDK test/typecheck gate with `npm test`.
 2. Builds the SDK TypeScript output, packs the SDK with `npm pack --ignore-scripts`, and installs that local tarball into `benchmark/app`.
-3. Builds, packages, uploads, and runs `benchmark/app` on iPhone 14 first.
-4. Builds `benchmark/app` as a release Android APK.
-5. Uploads the APK once to LambdaTest/TestMu.
-6. Runs the same Appium benchmark on four Android real-device configs one after another.
-7. Collects one JSON result per device.
-8. Optionally uploads each generated WAV to Google Drive and records a listen link.
-9. Optionally transcribes each generated WAV with NVIDIA Parakeet and computes word error rate.
-10. Builds Markdown, CSV, and JSON summary reports.
-11. Posts or updates the benchmark table as a PR comment.
+3. Builds and uploads one unsigned iOS IPA.
+4. Runs the uploaded IPA on the iOS TestMu device matrix one device after another.
+5. Builds `benchmark/app` as a release Android APK.
+6. Uploads the APK once to LambdaTest/TestMu.
+7. Runs the same Appium benchmark on four Android real-device configs one after another.
+8. Collects one JSON result per device.
+9. Optionally uploads each generated WAV to Google Drive and records a listen link.
+10. Optionally transcribes each generated WAV with NVIDIA Parakeet and computes word error rate.
+11. Builds Markdown, CSV, and JSON summary reports.
+12. Posts or updates the benchmark table as a PR comment.
 
 KaneAI is not used in this flow. There is no `.lambdatest/config.yaml`, `configuration_id`, or `@KaneAI validate` trigger. The test is driven by the checked-in Appium spec so the results are repeatable.
 
@@ -39,9 +40,9 @@ Both the iOS and Android benchmark apps are built after installing the SDK from 
 
 ## iOS App Source
 
-The workflow builds the iOS benchmark app from the PR commit, packages the unsigned `.app` into an `.ipa`, uploads that IPA to TestMu, and runs the iPhone 14 benchmark against the returned `lt://...` app URL. This avoids Apple Developer signing secrets while still testing app code and SDK code from the current commit.
+The workflow builds the iOS benchmark app from the PR commit, packages the unsigned `.app` into an `.ipa`, and uploads that IPA to TestMu once. Separate iOS matrix jobs then run the returned `lt://...` app URL on each iOS device. This avoids Apple Developer signing secrets while still testing app code and SDK code from the current commit.
 
-The iOS job runs before Android. If iOS fails, Android does not start, which keeps the feedback loop focused on the highest-risk path first.
+The iOS device matrix runs before Android. If any iOS device fails, Android does not start, which keeps the feedback loop focused on the highest-risk path first.
 
 ## Device Matrix
 
@@ -54,8 +55,9 @@ The workflow currently runs these devices sequentially with `max-parallel: 1`:
 | Pixel 8             | Android 14 | Android  |
 | Xiaomi Redmi Note 8 | Android 10 | Android  |
 | iPhone 14           | iOS 16     | iOS      |
+| iPad Air (2022)     | iOS 16     | iOS      |
 
-Edit the `testmu-android-benchmark.strategy.matrix.include` list in `.github/workflows/rn-ci.yml` to change the phones.
+Edit the `testmu-ios-benchmark.strategy.matrix.include` or `testmu-android-benchmark.strategy.matrix.include` lists in `.github/workflows/rn-ci.yml` to change the devices.
 
 ## Optional GitHub Variables
 
