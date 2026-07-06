@@ -232,8 +232,45 @@ function summarizeRequestedPlatformVersion(report) {
   return `requested OS ${requested}`;
 }
 
+function summarizeRequestedBrowser(report) {
+  const requested = String(report.requestedBrowserName || "").trim();
+  const actual = String(report.browserName || "").trim();
+
+  if (
+    !requested ||
+    !actual ||
+    requested.toLowerCase() === actual.toLowerCase()
+  ) {
+    return "";
+  }
+
+  return `requested browser ${requested}`;
+}
+
 function joinNotes(notes) {
   return notes.filter(Boolean).join("; ");
+}
+
+function formatPlatform(report) {
+  const platform = [report.platformName, report.platformVersion]
+    .filter(Boolean)
+    .join(" ");
+  const browserName = [report.browserName, report.browserVersion]
+    .filter(Boolean)
+    .join(" ");
+
+  if (report.target === "web" && browserName) {
+    return `${platform || "Web"} / ${browserName}`;
+  }
+
+  return platform || "unavailable";
+}
+
+function formatDeviceHeading(report) {
+  const targetLabel = report.target === "web" ? "Web" : "App";
+  return `${escapeMarkdown(report.device)} (${escapeMarkdown(
+    `${targetLabel}: ${formatPlatform(report)}`
+  )})`;
 }
 
 function buildDeviceStatusTable(reports) {
@@ -256,10 +293,11 @@ function buildDeviceStatusTable(reports) {
     const notes = joinNotes([
       statusNote,
       summarizeRequestedPlatformVersion(report),
+      summarizeRequestedBrowser(report),
     ]);
     lines.push(
       `| ${escapeMarkdown(report.device)} | ${escapeMarkdown(
-        `${report.platformName} ${report.platformVersion}`
+        formatPlatform(report)
       )} | ${summarizeDeviceStatus(report)} | ${formatTotalRuntime(
         report
       )} | ${modelSummary} | ${summarizeDeviceRtf(
@@ -276,9 +314,7 @@ function buildDeviceStatusTable(reports) {
 function buildDeviceTable(report) {
   if (report.status === "failed") {
     return [
-      `### ${escapeMarkdown(report.device)} (${escapeMarkdown(
-        report.platformName
-      )} ${escapeMarkdown(report.platformVersion)})`,
+      `### ${formatDeviceHeading(report)}`,
       "",
       "| Status | Total run time | Failed stage | What happened | Logs |",
       "| --- | ---: | --- | --- | --- |",
@@ -289,9 +325,7 @@ function buildDeviceTable(report) {
   }
 
   const lines = [
-    `### ${escapeMarkdown(report.device)} (${escapeMarkdown(
-      report.platformName
-    )} ${escapeMarkdown(report.platformVersion)})`,
+    `### ${formatDeviceHeading(report)}`,
     "",
     `Runtime: ${formatTotalRuntime(report)}. Models passed: ${countPassedRows(
       report
@@ -466,9 +500,13 @@ function summarizeParakeetWer(reports) {
 
 function buildCsv(reports) {
   const header = [
+    "target",
     "device",
     "platformName",
     "platformVersion",
+    "browserName",
+    "browserVersion",
+    "requestedBrowserName",
     "sampleText",
     "characterLength",
     "voice",
@@ -520,9 +558,13 @@ function buildCsv(reports) {
     if (report.status === "failed") {
       lines.push(
         [
+          report.target || "app",
           report.device,
           report.platformName,
           report.platformVersion,
+          report.browserName || "",
+          report.browserVersion || "",
+          report.requestedBrowserName || "",
           report.sampleText,
           report.characterLength,
           report.voiceDisplayName || report.voice,
@@ -543,9 +585,13 @@ function buildCsv(reports) {
     for (const row of report.rows || []) {
       lines.push(
         [
+          report.target || "app",
           report.device,
           report.platformName,
           report.platformVersion,
+          report.browserName || "",
+          report.browserVersion || "",
+          report.requestedBrowserName || "",
           report.sampleText,
           report.characterLength,
           report.voiceDisplayName || report.voice,

@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import Sound from 'react-native-sound';
 import {
   KittenTTS,
   KittenModel,
@@ -25,8 +24,8 @@ import {
   modelDisplayName,
   voiceDisplayName,
   ALL_VOICES,
-  createRNSoundPlayer,
 } from '@kittentts/react-native';
+import {createBenchmarkPlayer} from './benchmarkPlayer';
 
 type AppState =
   | {kind: 'idle'}
@@ -181,7 +180,7 @@ export default function App() {
       setBenchmarkReport(null);
 
       const instance = await KittenTTS.create(
-        {model, player: createRNSoundPlayer(Sound)},
+        {model, player: createBenchmarkPlayer()},
         (progress, info) => {
           if (mountedRef.current && info?.stage === 'downloading') {
             setState({
@@ -327,7 +326,7 @@ export default function App() {
             existingInstance ??
             (await withTimeout(
               KittenTTS.create(
-                {model, player: createRNSoundPlayer(Sound)},
+                {model, player: createBenchmarkPlayer()},
                 (progress, info) => {
                   if (mountedRef.current && info?.stage === 'downloading') {
                     setState({

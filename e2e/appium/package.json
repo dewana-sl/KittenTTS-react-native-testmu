@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "test:android": "wdio run wdio.android.conf.js",
-    "test:ios": "wdio run wdio.ios.conf.js"
+    "test:ios": "wdio run wdio.ios.conf.js",
+    "test:web:browser": "wdio run wdio.mobile-web.conf.js"
   },
   "devDependencies": {
     "@wdio/cli": "^9.20.0",
