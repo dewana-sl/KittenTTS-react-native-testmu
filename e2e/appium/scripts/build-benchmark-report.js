@@ -187,6 +187,33 @@ function summarizeDeviceWer(report) {
   return Number.isFinite(avg) ? `${formatNumber(avg, 2)}%` : "";
 }
 
+function summarizeDeviceRtf(report) {
+  const avg = average(
+    (report.rows || [])
+      .filter((row) => row.status !== "failed")
+      .map((row) => row.rtf)
+  );
+  return Number.isFinite(avg) ? formatNumber(avg, 3) : "";
+}
+
+function summarizeWorstDeviceRtf(report) {
+  const rows = (report.rows || [])
+    .filter((row) => row.status !== "failed" && Number.isFinite(Number(row.rtf)))
+    .map((row) => ({
+      model: row.modelDisplayName || row.model,
+      rtf: Number(row.rtf),
+    }));
+
+  if (rows.length === 0) {
+    return "";
+  }
+
+  const worst = rows.reduce((currentWorst, row) =>
+    row.rtf > currentWorst.rtf ? row : currentWorst
+  );
+  return `${formatNumber(worst.rtf, 3)} (${escapeMarkdown(worst.model)})`;
+}
+
 function summarizeDeviceStatus(report) {
   if (report.status === "failed") return "Failed";
   if (report.status === "partial") return "Partial";
@@ -194,10 +221,25 @@ function summarizeDeviceStatus(report) {
   return "Passed";
 }
 
+function summarizeRequestedPlatformVersion(report) {
+  const requested = String(report.requestedPlatformVersion || "").trim();
+  const actual = String(report.platformVersion || "").trim();
+
+  if (!requested || !actual || requested === actual) {
+    return "";
+  }
+
+  return `requested OS ${requested}`;
+}
+
+function joinNotes(notes) {
+  return notes.filter(Boolean).join("; ");
+}
+
 function buildDeviceStatusTable(reports) {
   const lines = [
-    "| Device | Platform | Status | Runtime | Models | Avg WER | Notes |",
-    "| --- | --- | --- | ---: | ---: | ---: | --- |",
+    "| Device | Platform | Status | Runtime | Models | Avg RTF | Worst RTF | Avg WER | Notes |",
+    "| --- | --- | --- | ---: | ---: | ---: | --- | ---: | --- |",
   ];
 
   for (const report of reports) {
@@ -205,20 +247,26 @@ function buildDeviceStatusTable(reports) {
       report.status === "failed"
         ? ""
         : `${countPassedRows(report)}/${(report.rows || []).length || 4}`;
-    const notes =
+    const statusNote =
       report.status === "failed"
         ? report.errorSummary || report.failedStage || ""
         : countFailedRows(report) > 0
         ? `${countFailedRows(report)} model row(s) failed`
         : "";
+    const notes = joinNotes([
+      statusNote,
+      summarizeRequestedPlatformVersion(report),
+    ]);
     lines.push(
       `| ${escapeMarkdown(report.device)} | ${escapeMarkdown(
         `${report.platformName} ${report.platformVersion}`
       )} | ${summarizeDeviceStatus(report)} | ${formatTotalRuntime(
         report
-      )} | ${modelSummary} | ${summarizeDeviceWer(report)} | ${escapeMarkdown(
-        notes
-      )} |`
+      )} | ${modelSummary} | ${summarizeDeviceRtf(
+        report
+      )} | ${summarizeWorstDeviceRtf(report)} | ${summarizeDeviceWer(
+        report
+      )} | ${escapeMarkdown(notes)} |`
     );
   }
 

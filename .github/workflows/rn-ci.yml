@@ -211,9 +211,9 @@ jobs:
           - slug: iphone-14
             device: iPhone 14
             version: "16"
-          - slug: ipad-air-2022
-            device: iPad Air (2022)
-            version: "16"
+          - slug: ipad-10-9-2022
+            device: iPad 10.9 (2022)
+            version: "18"
 
     steps:
       - uses: actions/checkout@v4

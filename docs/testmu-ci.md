@@ -55,7 +55,7 @@ The workflow currently runs these devices sequentially with `max-parallel: 1`:
 | Pixel 8             | Android 14 | Android  |
 | Xiaomi Redmi Note 8 | Android 10 | Android  |
 | iPhone 14           | iOS 16     | iOS      |
-| iPad Air (2022)     | iOS 16     | iOS      |
+| iPad 10.9 (2022)    | iOS 18     | iOS      |
 
 Edit the `testmu-ios-benchmark.strategy.matrix.include` or `testmu-android-benchmark.strategy.matrix.include` lists in `.github/workflows/rn-ci.yml` to change the devices.
 
@@ -123,7 +123,7 @@ The final report job combines those files into:
 - `benchmark-report/summary.json`
 - `benchmark-report/pr-comment.md`
 
-`summary.md` and the PR comment include common run details plus one table per device:
+`summary.md` and the PR comment include common run details plus a device status table with average RTF and the worst model RTF, followed by one table per device. The reported platform version comes from the Appium session when TestMu exposes it; otherwise the workflow falls back to the requested matrix version:
 
 | Model | Status | First gen (s) | Best warm (s) | Warm p50/p95 (s) | Best RTF | Warm p50/p95 RTF | Audio (s) | Listen |
 | ----- | ------ | ------------: | ------------: | ----------------: | -------: | ---------------: | --------: | ------ |

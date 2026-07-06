@@ -342,13 +342,28 @@ function getDeviceName() {
 
 function getPlatformName() {
   return (
+    browser?.capabilities?.platformName ||
+    browser?.requestedCapabilities?.platformName ||
     process.env.TESTMU_PLATFORM_NAME ||
     (process.env.TESTMU_IOS_DEVICE ? "iOS" : "Android")
   );
 }
 
+function getCapabilityPlatformVersion() {
+  return (
+    browser?.capabilities?.platformVersion ||
+    browser?.capabilities?.platform_version ||
+    browser?.capabilities?.osVersion ||
+    browser?.capabilities?.os_version ||
+    browser?.requestedCapabilities?.platformVersion ||
+    browser?.requestedCapabilities?.platform_version ||
+    null
+  );
+}
+
 function getPlatformVersion() {
   return (
+    getCapabilityPlatformVersion() ||
     process.env.TESTMU_PLATFORM_VERSION ||
     process.env.TESTMU_ANDROID_VERSION ||
     process.env.TESTMU_IOS_VERSION ||
@@ -366,6 +381,11 @@ function writeDeviceReport(report, startedAtMs) {
     device,
     platformName: getPlatformName(),
     platformVersion: getPlatformVersion(),
+    requestedPlatformVersion:
+      process.env.TESTMU_PLATFORM_VERSION ||
+      process.env.TESTMU_ANDROID_VERSION ||
+      process.env.TESTMU_IOS_VERSION ||
+      null,
     realDevice: process.env.TESTMU_REAL_DEVICE !== "false",
     sessionId: browser.sessionId,
     githubRunId: process.env.GITHUB_RUN_ID || null,
