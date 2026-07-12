@@ -31,15 +31,10 @@ exports.config = {
   capabilities: [
     {
       platformName,
-      platformVersion,
-      deviceName,
       browserName,
       "appium:deviceName": deviceName,
       "appium:platformVersion": platformVersion,
       "appium:newCommandTimeout": 900,
-      isRealMobile: process.env.TESTMU_REAL_DEVICE !== "false",
-      tunnel: true,
-      tunnelName,
       "lt:options": {
         build: process.env.GITHUB_RUN_ID
           ? `KittenTTS RN web ${process.env.GITHUB_RUN_ID}`
