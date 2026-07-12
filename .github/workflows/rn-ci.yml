@@ -227,6 +227,8 @@ jobs:
         working-directory: e2e/appium
 
       - name: Run TestMu iOS benchmark with unsigned IPA
+        id: run-ios-benchmark
+        continue-on-error: true
         timeout-minutes: 40
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
@@ -243,8 +245,38 @@ jobs:
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
+          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
+          set +e
           set -o pipefail
-          npm run test:ios 2>&1 | tee reports/appium-output.log
+          timeout 35m npm run test:ios 2>&1 | tee reports/appium-output.log
+          status="${PIPESTATUS[0]}"
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
+          if [ "$status" -eq 124 ]; then
+            echo "Timed out after 35 minutes while waiting for the TestMu/Appium iOS benchmark to finish." | tee -a reports/appium-output.log
+          fi
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        working-directory: e2e/appium
+
+      - name: Write iOS device failure report
+        if: steps.run-ios-benchmark.outcome == 'failure'
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-ios-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.run-ios-benchmark.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-ios-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-ios-benchmark.outputs.total_runtime_seconds }}
+        run: |
+          node scripts/write-failure-report.js
         working-directory: e2e/appium
 
       - name: Upload unsigned iOS benchmark report
@@ -254,6 +286,12 @@ jobs:
           name: testmu-benchmark-ios-${{ matrix.slug }}
           path: e2e/appium/reports/*
           if-no-files-found: warn
+
+      - name: Fail iOS device job if benchmark failed
+        if: steps.run-ios-benchmark.outcome == 'failure'
+        run: |
+          echo "The ${{ matrix.device }} iOS benchmark failed. Uploaded the failure report artifact above."
+          exit 1
 
   web-example:
     name: Benchmark app web build
@@ -562,13 +600,20 @@ jobs:
           path: e2e/appium/reports/*.json
           if-no-files-found: warn
 
+      - name: Fail device job if benchmark failed
+        if: steps.run-benchmark.outcome == 'failure'
+        run: |
+          echo "The ${{ matrix.device }} benchmark failed. Uploaded the failure report artifact above."
+          exit 1
+
   testmu-web-browser-pixel-8-chrome:
     name: TestMu web browser benchmark (Pixel 8 / Chrome)
     runs-on: ubuntu-latest
     needs:
       - web-example
       - upload-testmu-app
-    if: needs.upload-testmu-app.outputs.enabled == 'true'
+      - testmu-android-benchmark
+    if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -709,13 +754,20 @@ jobs:
           path: e2e/appium/reports/*
           if-no-files-found: warn
 
+      - name: Fail browser job if benchmark failed
+        if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
+        run: |
+          echo "The Pixel 8 / Chrome browser benchmark failed. Uploaded the failure report artifact above."
+          exit 1
+
   testmu-web-browser-iphone-14-safari:
     name: TestMu web browser benchmark (iPhone 14 / Safari)
     runs-on: ubuntu-latest
     needs:
       - web-example
       - upload-testmu-app
-    if: needs.upload-testmu-app.outputs.enabled == 'true'
+      - testmu-web-browser-pixel-8-chrome
+    if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -855,6 +907,12 @@ jobs:
           name: testmu-benchmark-web-iphone-14-safari
           path: e2e/appium/reports/*
           if-no-files-found: warn
+
+      - name: Fail browser job if benchmark failed
+        if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
+        run: |
+          echo "The iPhone 14 / Safari browser benchmark failed. Uploaded the failure report artifact above."
+          exit 1
 
   testmu-benchmark-report:
     name: TestMu benchmark report

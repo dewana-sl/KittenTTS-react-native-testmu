@@ -19,8 +19,9 @@ exports.config = {
   user: process.env.LT_USERNAME,
   key: process.env.LT_ACCESS_KEY,
 
+  protocol: "https",
   hostname: "mobile-hub.lambdatest.com",
-  port: 80,
+  port: 443,
   path: "/wd/hub",
 
   specs: ["./specs/kittentts-benchmark.mobile-web.spec.js"],
@@ -30,10 +31,15 @@ exports.config = {
   capabilities: [
     {
       platformName,
+      platformVersion,
+      deviceName,
       browserName,
       "appium:deviceName": deviceName,
       "appium:platformVersion": platformVersion,
       "appium:newCommandTimeout": 900,
+      isRealMobile: process.env.TESTMU_REAL_DEVICE !== "false",
+      tunnel: true,
+      tunnelName,
       "lt:options": {
         build: process.env.GITHUB_RUN_ID
           ? `KittenTTS RN web ${process.env.GITHUB_RUN_ID}`
