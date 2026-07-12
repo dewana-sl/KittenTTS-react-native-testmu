@@ -394,14 +394,16 @@ describe("KittenTTS React Native web benchmark", () => {
 
     if (process.env.TESTMU_WEB_SMOKE_ONLY === "true") {
       const currentText = await readElementText("tts-input");
+      const reportSampleText = sampleText || currentText || "";
       writeDeviceReport(
         {
           schemaVersion: 1,
+          smokeOnly: true,
           status: "passed",
           startedAt: new Date(deviceStartedAtMs).toISOString(),
           finishedAt: new Date().toISOString(),
-          sampleText: currentText || sampleText || "",
-          characterLength: String(currentText || sampleText || "").length,
+          sampleText: reportSampleText,
+          characterLength: reportSampleText.length,
           rows: [],
         },
         deviceStartedAtMs

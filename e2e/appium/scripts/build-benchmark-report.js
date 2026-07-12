@@ -283,6 +283,8 @@ function buildDeviceStatusTable(reports) {
     const modelSummary =
       report.status === "failed"
         ? ""
+        : report.smokeOnly
+        ? "Smoke"
         : `${countPassedRows(report)}/${(report.rows || []).length || 4}`;
     const statusNote =
       report.status === "failed"
@@ -321,6 +323,16 @@ function buildDeviceTable(report) {
       `| Failed | ${formatTotalRuntime(report)} | ${escapeMarkdown(
         report.failedStage
       )} | ${escapeMarkdown(report.errorSummary)} | ${formatLogLink(report)} |`,
+    ].join("\n");
+  }
+
+  if (report.smokeOnly) {
+    return [
+      `### ${formatDeviceHeading(report)}`,
+      "",
+      `Runtime: ${formatTotalRuntime(
+        report
+      )}. Browser smoke check passed; model generation was not run in this isolated web test.`,
     ].join("\n");
   }
 
