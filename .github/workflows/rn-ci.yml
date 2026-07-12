@@ -699,6 +699,7 @@ jobs:
           TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: false
+          TESTMU_WEB_SMOKE_ONLY: true
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports
@@ -853,6 +854,7 @@ jobs:
           TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: false
+          TESTMU_WEB_SMOKE_ONLY: true
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports

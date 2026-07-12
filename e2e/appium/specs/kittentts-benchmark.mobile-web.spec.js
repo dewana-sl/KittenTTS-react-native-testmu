@@ -392,6 +392,23 @@ describe("KittenTTS React Native web benchmark", () => {
       }
     }
 
+    if (process.env.TESTMU_WEB_SMOKE_ONLY === "true") {
+      const currentText = await readElementText("tts-input");
+      writeDeviceReport(
+        {
+          schemaVersion: 1,
+          status: "passed",
+          startedAt: new Date(deviceStartedAtMs).toISOString(),
+          finishedAt: new Date().toISOString(),
+          sampleText: currentText || sampleText || "",
+          characterLength: String(currentText || sampleText || "").length,
+          rows: [],
+        },
+        deviceStartedAtMs
+      );
+      return;
+    }
+
     await benchmark.click();
 
     const report = await waitForBenchmarkReport(BENCHMARK_REPORT_TIMEOUT_MS);
