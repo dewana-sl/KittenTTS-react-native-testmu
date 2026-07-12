@@ -687,7 +687,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: http://localhost:4173
+          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_DEVICE: Pixel 8
           TESTMU_PLATFORM_NAME: Android
@@ -722,7 +722,7 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: "14"
           TESTMU_BROWSER_NAME: Chrome
-          TESTMU_WEB_URL: http://localhost:4173
+          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
@@ -841,7 +841,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: http://localhost:4173
+          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-iphone-14-safari
           TESTMU_DEVICE: iPhone 14
           TESTMU_PLATFORM_NAME: iOS
@@ -876,7 +876,7 @@ jobs:
           TESTMU_PLATFORM_NAME: iOS
           TESTMU_PLATFORM_VERSION: "16"
           TESTMU_BROWSER_NAME: Safari
-          TESTMU_WEB_URL: http://localhost:4173
+          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-iphone-14-safari
           TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
