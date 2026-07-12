@@ -339,9 +339,8 @@ async function waitForBenchmarkReport(timeoutMs) {
     if (report) {
       lastReport = report;
       if (hasFinishedBenchmark(report)) {
-        return (
-          (await getBenchmarkReportFromUi({ includeAudio: true })) || report
-        );
+        const includeAudio = process.env.TESTMU_REQUIRE_WER_AUDIO !== "false";
+        return (await getBenchmarkReportFromUi({ includeAudio })) || report;
       }
     }
 

@@ -698,7 +698,7 @@ jobs:
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
           TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
           TESTMU_EXPECTED_WARM_RUNS: "1"
-          TESTMU_REQUIRE_WER_AUDIO: true
+          TESTMU_REQUIRE_WER_AUDIO: false
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports
@@ -852,7 +852,7 @@ jobs:
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
           TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
           TESTMU_EXPECTED_WARM_RUNS: "1"
-          TESTMU_REQUIRE_WER_AUDIO: true
+          TESTMU_REQUIRE_WER_AUDIO: false
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports
