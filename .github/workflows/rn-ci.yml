@@ -687,7 +687,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_DEVICE: Pixel 8
           TESTMU_PLATFORM_NAME: Android
@@ -695,8 +695,10 @@ jobs:
           TESTMU_BROWSER_NAME: Chrome
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
+          TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports
           set +e
@@ -722,10 +724,10 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: "14"
           TESTMU_BROWSER_NAME: Chrome
-          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-web-benchmark.outputs.exit_code }}
           BENCHMARK_STARTED_AT_MS: ${{ steps.benchmark-clock.outputs.started_at_ms }}
@@ -760,8 +762,8 @@ jobs:
           echo "The Pixel 8 / Chrome browser benchmark failed. Uploaded the failure report artifact above."
           exit 1
 
-  testmu-web-browser-iphone-14-safari:
-    name: TestMu web browser benchmark (iPhone 14 / Safari)
+  testmu-web-browser-galaxy-note10-chrome:
+    name: TestMu web browser benchmark (Galaxy Note10 / Chrome)
     runs-on: ubuntu-latest
     needs:
       - web-example
@@ -823,7 +825,7 @@ jobs:
         with:
           user: ${{ secrets.LT_USERNAME }}
           accessKey: ${{ secrets.LT_ACCESS_KEY }}
-          tunnelName: kittentts-web-${{ github.run_id }}-iphone-14-safari
+          tunnelName: kittentts-web-${{ github.run_id }}-galaxy-note10-chrome
 
       - name: Copy web preview log into Appium reports
         if: always()
@@ -841,16 +843,18 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
-          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-iphone-14-safari
-          TESTMU_DEVICE: iPhone 14
-          TESTMU_PLATFORM_NAME: iOS
-          TESTMU_PLATFORM_VERSION: "16"
-          TESTMU_BROWSER_NAME: Safari
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1"
+          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-galaxy-note10-chrome
+          TESTMU_DEVICE: Galaxy Note10
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: "12"
+          TESTMU_BROWSER_NAME: Chrome
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
+          TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
         run: |
           mkdir -p reports
           set +e
@@ -872,14 +876,14 @@ jobs:
         if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
         env:
           TESTMU_TARGET: web
-          TESTMU_DEVICE: iPhone 14
-          TESTMU_PLATFORM_NAME: iOS
-          TESTMU_PLATFORM_VERSION: "16"
-          TESTMU_BROWSER_NAME: Safari
-          TESTMU_WEB_URL: http://localhost.lambdatest.com:4173
-          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-iphone-14-safari
+          TESTMU_DEVICE: Galaxy Note10
+          TESTMU_PLATFORM_NAME: Android
+          TESTMU_PLATFORM_VERSION: "12"
+          TESTMU_BROWSER_NAME: Chrome
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1"
+          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-galaxy-note10-chrome
           TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-web-benchmark.outputs.exit_code }}
           BENCHMARK_STARTED_AT_MS: ${{ steps.benchmark-clock.outputs.started_at_ms }}
@@ -904,14 +908,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: testmu-benchmark-web-iphone-14-safari
+          name: testmu-benchmark-web-galaxy-note10-chrome
           path: e2e/appium/reports/*
           if-no-files-found: warn
 
       - name: Fail browser job if benchmark failed
         if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
         run: |
-          echo "The iPhone 14 / Safari browser benchmark failed. Uploaded the failure report artifact above."
+          echo "The Galaxy Note10 / Chrome browser benchmark failed. Uploaded the failure report artifact above."
           exit 1
 
   testmu-benchmark-report:
@@ -922,7 +926,7 @@ jobs:
       - upload-testmu-app
       - testmu-android-benchmark
       - testmu-web-browser-pixel-8-chrome
-      - testmu-web-browser-iphone-14-safari
+      - testmu-web-browser-galaxy-note10-chrome
     if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
 
     steps:

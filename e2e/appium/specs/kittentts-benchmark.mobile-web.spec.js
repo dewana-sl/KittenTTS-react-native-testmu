@@ -6,7 +6,17 @@ const EXPECTED_MODELS = [
   "kitten-tts-nano-0.8-int8",
   "kitten-tts-micro-0.8",
   "kitten-tts-mini-0.8",
-];
+].filter((model) => {
+  const expectedModels = process.env.TESTMU_EXPECTED_MODELS;
+  if (!expectedModels) return true;
+  return expectedModels
+    .split(",")
+    .map((value) => value.trim())
+    .includes(model);
+});
+const EXPECTED_WARM_RUNS = Number(
+  process.env.TESTMU_EXPECTED_WARM_RUNS || 5
+);
 const BENCHMARK_REPORT_TIMEOUT_MS = Number(
   process.env.TESTMU_BENCHMARK_REPORT_TIMEOUT_MS || 30 * 60 * 1000
 );
@@ -411,9 +421,9 @@ describe("KittenTTS React Native web benchmark", () => {
         expect(row.generationSeconds).toBeGreaterThan(0);
         expect(row.firstGenerationMs).toBeGreaterThan(0);
         expect(row.firstGenerationSeconds).toBeGreaterThan(0);
-        expect(row.warmRunCount).toBe(5);
-        expect(row.warmGenerationMs.length).toBe(5);
-        expect(row.warmRtf.length).toBe(5);
+        expect(row.warmRunCount).toBe(EXPECTED_WARM_RUNS);
+        expect(row.warmGenerationMs.length).toBe(EXPECTED_WARM_RUNS);
+        expect(row.warmRtf.length).toBe(EXPECTED_WARM_RUNS);
         expect(row.warmP50GenerationMs).toBeGreaterThan(0);
         expect(row.warmP95GenerationMs).toBeGreaterThan(0);
         expect(row.durationSeconds).toBeGreaterThan(0);

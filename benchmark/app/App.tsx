@@ -96,7 +96,7 @@ type BenchmarkReport = {
   rows: BenchmarkRow[];
 };
 
-const MODELS: KittenModel[] = [
+const DEFAULT_BENCHMARK_MODELS: KittenModel[] = [
   KittenModel.Nano,
   KittenModel.NanoInt8,
   KittenModel.Micro,
@@ -105,9 +105,14 @@ const MODELS: KittenModel[] = [
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
-const BENCHMARK_WARM_RUNS = 5;
+const DEFAULT_BENCHMARK_WARM_RUNS = 5;
 const WER_AUDIO_CHUNK_SIZE = 64000;
 const ANDROID_DIRECT_AUDIO_MIN_API = 31;
+
+type BenchmarkConfig = {
+  models: KittenModel[];
+  warmRuns: number;
+};
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -128,6 +133,50 @@ function androidApiVersion() {
   return typeof Platform.Version === 'number'
     ? Platform.Version
     : Number.parseInt(String(Platform.Version), 10) || 0;
+}
+
+function getWebSearchParam(name: string): string | null {
+  if (Platform.OS !== 'web') {
+    return null;
+  }
+
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? '').get(name);
+  } catch {
+    return null;
+  }
+}
+
+function parseBenchmarkModels(value: string | null): KittenModel[] {
+  if (!value) {
+    return DEFAULT_BENCHMARK_MODELS;
+  }
+
+  const allowedModels = new Set(Object.values(KittenModel));
+  const models = value
+    .split(',')
+    .map(model => model.trim())
+    .filter((model): model is KittenModel =>
+      allowedModels.has(model as KittenModel),
+    );
+
+  return models.length > 0 ? models : DEFAULT_BENCHMARK_MODELS;
+}
+
+function parseWarmRuns(value: string | null): number {
+  const runs = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(runs)) {
+    return DEFAULT_BENCHMARK_WARM_RUNS;
+  }
+
+  return Math.max(1, Math.min(10, runs));
+}
+
+function readBenchmarkConfig(): BenchmarkConfig {
+  return {
+    models: parseBenchmarkModels(getWebSearchParam('benchmarkModels')),
+    warmRuns: parseWarmRuns(getWebSearchParam('benchmarkWarmRuns')),
+  };
 }
 
 function makeFailedBenchmarkRow(
@@ -164,6 +213,7 @@ export default function App() {
   const [result, setResult] = useState<KittenTTSResult | null>(null);
   const [benchmarkReport, setBenchmarkReport] =
     useState<BenchmarkReport | null>(null);
+  const benchmarkConfig = useMemo(readBenchmarkConfig, []);
 
   const isWorking =
     state.kind === 'preparing' ||
@@ -275,7 +325,9 @@ export default function App() {
       setBenchmarkReport(null);
       setResult(null);
       const startedAt = new Date().toISOString();
-      const rows = MODELS.map(model =>
+      const benchmarkModels = benchmarkConfig.models;
+      const benchmarkWarmRuns = benchmarkConfig.warmRuns;
+      const rows = benchmarkModels.map(model =>
         makeFailedBenchmarkRow(
           model,
           `Benchmark ${modelDisplayName(model)}`,
@@ -300,8 +352,8 @@ export default function App() {
 
       publishReport();
 
-      for (let index = 0; index < MODELS.length; index += 1) {
-        const model = MODELS[index];
+      for (let index = 0; index < benchmarkModels.length; index += 1) {
+        const model = benchmarkModels[index];
         rows[index] = makeFailedBenchmarkRow(
           model,
           `Benchmark ${modelDisplayName(model)}`,
@@ -314,7 +366,7 @@ export default function App() {
           kind: 'benchmarking',
           model: modelDisplayName(model),
           completed: index,
-          total: MODELS.length,
+          total: benchmarkModels.length,
         });
 
         const existingInstance =
@@ -335,7 +387,7 @@ export default function App() {
                         progress * 100,
                       )}%`,
                       completed: index,
-                      total: MODELS.length,
+                      total: benchmarkModels.length,
                     });
                   }
                 },
@@ -357,14 +409,14 @@ export default function App() {
             generationMs: number;
           }> = [];
 
-          for (let run = 0; run < BENCHMARK_WARM_RUNS; run += 1) {
+          for (let run = 0; run < benchmarkWarmRuns; run += 1) {
             setState({
               kind: 'benchmarking',
               model: `${modelDisplayName(model)} run ${
                 run + 1
-              }/${BENCHMARK_WARM_RUNS}`,
+              }/${benchmarkWarmRuns}`,
               completed: index,
-              total: MODELS.length,
+              total: benchmarkModels.length,
             });
             measuredRuns.push(
               await measureGeneration(
@@ -374,7 +426,7 @@ export default function App() {
                 selectedSpeed,
                 `Timed out generating ${modelDisplayName(model)} warm run ${
                   run + 1
-                }/${BENCHMARK_WARM_RUNS}`,
+                }/${benchmarkWarmRuns}`,
               ),
             );
           }
@@ -413,7 +465,7 @@ export default function App() {
               firstRun.result.duration > 0
                 ? firstGenerationSeconds / firstRun.result.duration
                 : 0,
-            warmRunCount: BENCHMARK_WARM_RUNS,
+            warmRunCount: benchmarkWarmRuns,
             warmGenerationMs: measuredRuns.map(run => run.generationMs),
             warmGenerationSeconds,
             warmRtf,
@@ -474,7 +526,7 @@ export default function App() {
         message: getErrorMessage(error, 'Benchmark failed'),
       });
     }
-  }, [inputText, selectedModel, selectedSpeed, selectedVoice]);
+  }, [benchmarkConfig, inputText, selectedModel, selectedSpeed, selectedVoice]);
 
   const handleModelChange = useCallback(
     (model: KittenModel) => {
@@ -514,7 +566,7 @@ export default function App() {
         <View style={styles.section}>
           <Text style={styles.label}>Model</Text>
           <View style={styles.chipRow}>
-            {MODELS.map(model => (
+            {DEFAULT_BENCHMARK_MODELS.map(model => (
               <TouchableOpacity
                 key={model}
                 style={[
