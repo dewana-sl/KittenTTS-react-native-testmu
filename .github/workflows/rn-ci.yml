@@ -613,7 +613,7 @@ jobs:
   testmu-web-browser-benchmark:
     name: TestMu web benchmark (${{ matrix.device }} / ${{ matrix.browser }})
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 28
     needs:
       - web-example
     strategy:
@@ -627,7 +627,7 @@ jobs:
             version: "14"
             browser: Chrome
             browser_version: ""
-            model: kitten-tts-nano-0.8
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "true"
@@ -638,7 +638,7 @@ jobs:
             version: "18"
             browser: Safari
             browser_version: ""
-            model: kitten-tts-nano-0.8-int8
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "true"
@@ -649,7 +649,7 @@ jobs:
             version: ""
             browser: Chrome
             browser_version: latest
-            model: kitten-tts-nano-0.8
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "false"
@@ -723,11 +723,11 @@ jobs:
         id: run-web-benchmark
         if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 12
+        timeout-minutes: 22
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.model }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
@@ -736,8 +736,8 @@ jobs:
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_WDIO_SCRIPT: ${{ matrix.wdio_script }}
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 480000
-          TESTMU_EXPECTED_MODELS: ${{ matrix.model }}
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1200000
+          TESTMU_EXPECTED_MODELS: ${{ matrix.models }}
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
           TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
@@ -746,12 +746,12 @@ jobs:
           set +e
           setsid bash -lc 'npm run "${TESTMU_WDIO_SCRIPT}"' > reports/appium-output.log 2>&1 &
           appium_pid="$!"
-          deadline=$((SECONDS + 600))
+          deadline=$((SECONDS + 1200))
           status=0
           while kill -0 "$appium_pid" 2>/dev/null; do
             if [ "$SECONDS" -ge "$deadline" ]; then
               status=124
-              echo "Timed out after 10 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." >> reports/appium-output.log
+              echo "Timed out after 20 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." >> reports/appium-output.log
               kill -TERM "-$appium_pid" 2>/dev/null || kill -TERM "$appium_pid" 2>/dev/null || true
               sleep 5
               kill -KILL "-$appium_pid" 2>/dev/null || kill -KILL "$appium_pid" 2>/dev/null || true
@@ -783,7 +783,7 @@ jobs:
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.model }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
