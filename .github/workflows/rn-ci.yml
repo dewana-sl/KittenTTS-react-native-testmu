@@ -615,6 +615,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - web-example
+    if: ${{ false }}
 
     steps:
       - uses: actions/checkout@v4
@@ -684,18 +685,18 @@ jobs:
         id: run-web-benchmark
         if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 40
+        timeout-minutes: 18
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark."
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_DEVICE: Pixel 8
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: "14"
           TESTMU_BROWSER_NAME: Chrome
           TESTMU_REAL_DEVICE: true
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 720000
           TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: false
@@ -705,12 +706,12 @@ jobs:
           mkdir -p reports
           set +e
           set -o pipefail
-          timeout 35m npm run test:web:browser 2>&1 | tee reports/appium-output.log
+          timeout 15m npm run test:web:browser 2>&1 | tee reports/appium-output.log
           status="${PIPESTATUS[0]}"
           finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
           total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "${{ steps.benchmark-clock.outputs.started_at_ms }}" "$finished_at_ms")"
           if [ "$status" -eq 124 ]; then
-            echo "Timed out after 35 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." | tee -a reports/appium-output.log
+            echo "Timed out after 15 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." | tee -a reports/appium-output.log
           fi
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
@@ -726,7 +727,7 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: "14"
           TESTMU_BROWSER_NAME: Chrome
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark."
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.
@@ -770,6 +771,7 @@ jobs:
     needs:
       - web-example
       - testmu-web-browser-pixel-8-chrome
+    if: ${{ false }}
 
     steps:
       - uses: actions/checkout@v4
@@ -924,7 +926,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - web-example
-      - testmu-web-browser-galaxy-note10-chrome
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -1092,8 +1093,6 @@ jobs:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
-      - testmu-web-browser-pixel-8-chrome
-      - testmu-web-browser-galaxy-note10-chrome
       - testmu-web-browser-benchmark
     if: always()
 

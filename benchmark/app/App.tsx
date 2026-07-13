@@ -113,6 +113,7 @@ type BenchmarkConfig = {
   models: KittenModel[];
   warmRuns: number;
   sampleText: string | null;
+  includeAudio: boolean;
 };
 
 function e2eTextProps(testID: string) {
@@ -178,6 +179,7 @@ function readBenchmarkConfig(): BenchmarkConfig {
     models: parseBenchmarkModels(getWebSearchParam('benchmarkModels')),
     warmRuns: parseWarmRuns(getWebSearchParam('benchmarkWarmRuns')),
     sampleText: getWebSearchParam('benchmarkText'),
+    includeAudio: getWebSearchParam('benchmarkIncludeAudio') !== 'false',
   };
 }
 
@@ -466,7 +468,9 @@ export default function App() {
           const warmRtf = warmGenerationSeconds.map(seconds =>
             durationSeconds > 0 ? seconds / durationSeconds : 0,
           );
-          const wavBase64 = getWavBase64(res);
+          const wavBase64 = benchmarkConfig.includeAudio
+            ? getWavBase64(res)
+            : undefined;
 
           rows[index] = {
             model: String(model),
