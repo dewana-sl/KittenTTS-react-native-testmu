@@ -689,7 +689,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_DEVICE: Pixel 8
           TESTMU_PLATFORM_NAME: Android
@@ -743,7 +743,7 @@ jobs:
           TESTMU_PLATFORM_NAME: Android
           TESTMU_PLATFORM_VERSION: "14"
           TESTMU_BROWSER_NAME: Chrome
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-pixel-8-chrome
           TESTMU_REAL_DEVICE: true
           TESTMU_SAMPLE_TEXT: KittenTTS browser benchmark.

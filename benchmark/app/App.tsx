@@ -114,6 +114,7 @@ type BenchmarkConfig = {
   warmRuns: number;
   sampleText: string | null;
   includeAudio: boolean;
+  autoStart: boolean;
 };
 
 function e2eTextProps(testID: string) {
@@ -180,7 +181,26 @@ function readBenchmarkConfig(): BenchmarkConfig {
     warmRuns: parseWarmRuns(getWebSearchParam('benchmarkWarmRuns')),
     sampleText: getWebSearchParam('benchmarkText'),
     includeAudio: getWebSearchParam('benchmarkIncludeAudio') !== 'false',
+    autoStart: getWebSearchParam('benchmarkAutoStart') === 'true',
   };
+}
+
+function publishWebBenchmarkReport(report: BenchmarkReport) {
+  if (Platform.OS !== 'web') {
+    return;
+  }
+
+  (globalThis as {__KITTEN_BENCHMARK_REPORT__?: BenchmarkReport})
+    .__KITTEN_BENCHMARK_REPORT__ = report;
+}
+
+function publishWebBenchmarkError(message: string) {
+  if (Platform.OS !== 'web') {
+    return;
+  }
+
+  (globalThis as {__KITTEN_BENCHMARK_ERROR__?: string})
+    .__KITTEN_BENCHMARK_ERROR__ = message;
 }
 
 function createBenchmarkTTSConfig(model: KittenModel) {
@@ -219,6 +239,7 @@ export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);
   const ttsRef = useRef<KittenTTS | null>(null);
   const mountedRef = useRef(true);
+  const autoBenchmarkStartedRef = useRef(false);
   const [state, setState] = useState<AppState>({kind: 'idle'});
   const benchmarkConfig = useMemo(readBenchmarkConfig, []);
   const [inputText, setInputText] = useState(
@@ -355,7 +376,7 @@ export default function App() {
         ),
       );
       const publishReport = (finishedAt: string | null = null) => {
-        setBenchmarkReport({
+        const report = {
           schemaVersion: 1,
           sampleText,
           characterLength: Array.from(sampleText).length,
@@ -365,7 +386,9 @@ export default function App() {
           startedAt,
           finishedAt,
           rows: [...rows],
-        });
+        };
+        publishWebBenchmarkReport(report);
+        setBenchmarkReport(report);
       };
 
       publishReport();
@@ -541,12 +564,28 @@ export default function App() {
       publishReport(new Date().toISOString());
       setState({kind: 'idle'});
     } catch (error: unknown) {
+      publishWebBenchmarkError(getErrorMessage(error, 'Benchmark failed'));
       setState({
         kind: 'error',
         message: getErrorMessage(error, 'Benchmark failed'),
       });
     }
   }, [benchmarkConfig, inputText, selectedModel, selectedSpeed, selectedVoice]);
+
+  useEffect(() => {
+    if (
+      !benchmarkConfig.autoStart ||
+      autoBenchmarkStartedRef.current ||
+      isWorking ||
+      !ttsRef.current ||
+      !inputText.trim()
+    ) {
+      return;
+    }
+
+    autoBenchmarkStartedRef.current = true;
+    handleBenchmark();
+  }, [benchmarkConfig.autoStart, handleBenchmark, inputText, isWorking]);
 
   const handleModelChange = useCallback(
     (model: KittenModel) => {

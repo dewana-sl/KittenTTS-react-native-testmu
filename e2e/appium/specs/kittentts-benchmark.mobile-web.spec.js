@@ -78,6 +78,14 @@ async function readElementText(testId) {
 }
 
 async function readBenchmarkReport(testId) {
+  const globalReport = await browser
+    .execute(() => globalThis.__KITTEN_BENCHMARK_REPORT__ || null)
+    .catch(() => null);
+
+  if (globalReport) {
+    return globalReport;
+  }
+
   try {
     const reportText = await readElementText(testId);
     return parseBenchmarkJson(reportText);
@@ -344,6 +352,13 @@ async function waitForBenchmarkReport(timeoutMs) {
       }
     }
 
+    const globalError = await browser
+      .execute(() => globalThis.__KITTEN_BENCHMARK_ERROR__ || "")
+      .catch(() => "");
+    if (globalError) {
+      throw new Error(`Web app benchmark error: ${globalError}`);
+    }
+
     const errorMessage = await getOptionalText("error-message");
     if (errorMessage) {
       throw new Error(`Web app showed error-banner: ${errorMessage}`);
@@ -370,14 +385,18 @@ describe("KittenTTS React Native web benchmark", () => {
   it("benchmarks every bundled model in a real mobile browser", async () => {
     const deviceStartedAtMs = Date.now();
     const webUrl = process.env.TESTMU_WEB_URL;
+    const autoBenchmark = /benchmarkAutoStart=true/.test(webUrl);
 
     await browser.url(webUrl);
 
-    const benchmark = await waitForWebReady(WEB_READY_TIMEOUT_MS);
-    const input = await findByTestId("tts-input");
+    let benchmark = null;
+    if (!autoBenchmark) {
+      benchmark = await waitForWebReady(WEB_READY_TIMEOUT_MS);
+    }
 
     const sampleText = process.env.TESTMU_SAMPLE_TEXT;
-    if (sampleText) {
+    if (sampleText && !autoBenchmark) {
+      const input = await findByTestId("tts-input");
       const currentText = await readElementText("tts-input");
       if (currentText !== sampleText) {
         try {
@@ -411,7 +430,9 @@ describe("KittenTTS React Native web benchmark", () => {
       return;
     }
 
-    await benchmark.click();
+    if (!autoBenchmark) {
+      await benchmark.click();
+    }
 
     const report = await waitForBenchmarkReport(BENCHMARK_REPORT_TIMEOUT_MS);
 
