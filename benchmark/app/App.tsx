@@ -104,7 +104,7 @@ const DEFAULT_BENCHMARK_MODELS: KittenModel[] = [
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
+const DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
 const DEFAULT_BENCHMARK_WARM_RUNS = 5;
 const WER_AUDIO_CHUNK_SIZE = 64000;
 const ANDROID_DIRECT_AUDIO_MIN_API = 31;
@@ -115,6 +115,7 @@ type BenchmarkConfig = {
   sampleText: string | null;
   includeAudio: boolean;
   autoStart: boolean;
+  modelTimeoutMs: number;
 };
 
 function e2eTextProps(testID: string) {
@@ -175,6 +176,15 @@ function parseWarmRuns(value: string | null): number {
   return Math.max(1, Math.min(10, runs));
 }
 
+function parseModelTimeoutMs(value: string | null): number {
+  const timeoutMs = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(timeoutMs)) {
+    return DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS;
+  }
+
+  return Math.max(30_000, Math.min(900_000, timeoutMs));
+}
+
 function readBenchmarkConfig(): BenchmarkConfig {
   return {
     models: parseBenchmarkModels(getWebSearchParam('benchmarkModels')),
@@ -182,6 +192,9 @@ function readBenchmarkConfig(): BenchmarkConfig {
     sampleText: getWebSearchParam('benchmarkText'),
     includeAudio: getWebSearchParam('benchmarkIncludeAudio') !== 'false',
     autoStart: getWebSearchParam('benchmarkAutoStart') === 'true',
+    modelTimeoutMs: parseModelTimeoutMs(
+      getWebSearchParam('benchmarkModelTimeoutMs'),
+    ),
   };
 }
 
@@ -435,7 +448,7 @@ export default function App() {
                   }
                 },
               ),
-              BENCHMARK_MODEL_TIMEOUT_MS,
+              benchmarkConfig.modelTimeoutMs,
               `Timed out preparing ${modelDisplayName(model)}`,
             ));
 
@@ -445,6 +458,7 @@ export default function App() {
             selectedVoice,
             selectedSpeed,
             `Timed out warming ${modelDisplayName(model)}`,
+            benchmarkConfig.modelTimeoutMs,
           );
 
           const measuredRuns: Array<{
@@ -777,11 +791,12 @@ async function measureGeneration(
   voice: KittenVoice,
   speed: number,
   timeoutMessage: string,
+  timeoutMs = DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS,
 ): Promise<{result: KittenTTSResult; generationMs: number}> {
   const generationStartedAt = Date.now();
   const result = await withTimeout(
     instance.generate(sampleText, voice, speed),
-    BENCHMARK_MODEL_TIMEOUT_MS,
+    timeoutMs,
     timeoutMessage,
   );
   return {
