@@ -112,6 +112,7 @@ const ANDROID_DIRECT_AUDIO_MIN_API = 31;
 type BenchmarkConfig = {
   models: KittenModel[];
   warmRuns: number;
+  sampleText: string | null;
 };
 
 function e2eTextProps(testID: string) {
@@ -176,6 +177,7 @@ function readBenchmarkConfig(): BenchmarkConfig {
   return {
     models: parseBenchmarkModels(getWebSearchParam('benchmarkModels')),
     warmRuns: parseWarmRuns(getWebSearchParam('benchmarkWarmRuns')),
+    sampleText: getWebSearchParam('benchmarkText'),
   };
 }
 
@@ -203,9 +205,11 @@ export default function App() {
   const ttsRef = useRef<KittenTTS | null>(null);
   const mountedRef = useRef(true);
   const [state, setState] = useState<AppState>({kind: 'idle'});
+  const benchmarkConfig = useMemo(readBenchmarkConfig, []);
   const [inputText, setInputText] = useState(
-    'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
-      'This benchmark compares every model for speed, quality, and consistency.',
+    benchmarkConfig.sampleText ||
+      'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
+        'This benchmark compares every model for speed, quality, and consistency.',
   );
   const [selectedModel, setSelectedModel] = useState(KittenModel.Nano);
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);
@@ -213,7 +217,6 @@ export default function App() {
   const [result, setResult] = useState<KittenTTSResult | null>(null);
   const [benchmarkReport, setBenchmarkReport] =
     useState<BenchmarkReport | null>(null);
-  const benchmarkConfig = useMemo(readBenchmarkConfig, []);
 
   const isWorking =
     state.kind === 'preparing' ||
