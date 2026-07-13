@@ -953,11 +953,17 @@ jobs:
             platform: Android
             version: "14"
             browser: Chrome
+            model: kitten-tts-nano-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
           - slug: iphone-14-safari-benchmark
             device: iPhone 14
             platform: iOS
             version: "16"
             browser: Safari
+            model: kitten-tts-nano-0.8-int8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
 
     steps:
       - uses: actions/checkout@v4
@@ -1031,7 +1037,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.model }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
@@ -1039,10 +1045,10 @@ jobs:
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
           TESTMU_REAL_DEVICE: true
           TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 480000
-          TESTMU_EXPECTED_MODELS: kitten-tts-nano-0.8
+          TESTMU_EXPECTED_MODELS: ${{ matrix.model }}
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: false
-          TESTMU_SAMPLE_TEXT: KittenTTS web benchmark.
+          TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
         run: |
           mkdir -p reports
           set +e
@@ -1084,10 +1090,10 @@ jobs:
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=kitten-tts-nano-0.8&benchmarkWarmRuns=1&benchmarkText=KittenTTS%20web%20benchmark.&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.model }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=false&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_REAL_DEVICE: true
-          TESTMU_SAMPLE_TEXT: KittenTTS web benchmark.
+          TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
           GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           BENCHMARK_EXIT_CODE: ${{ steps.run-web-benchmark.outputs.exit_code }}
           BENCHMARK_STARTED_AT_MS: ${{ steps.benchmark-clock.outputs.started_at_ms }}
