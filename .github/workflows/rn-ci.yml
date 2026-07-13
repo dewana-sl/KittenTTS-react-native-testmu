@@ -956,10 +956,10 @@ jobs:
             model: kitten-tts-nano-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
-          - slug: iphone-14-safari-benchmark
-            device: iPhone 14
+          - slug: ipad-10-9-2022-safari-benchmark
+            device: iPad 10.9 (2022)
             platform: iOS
-            version: "16"
+            version: "18"
             browser: Safari
             model: kitten-tts-nano-0.8-int8
             sample_text: KittenTTS web benchmark.
