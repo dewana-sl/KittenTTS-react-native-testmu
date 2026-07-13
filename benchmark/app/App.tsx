@@ -181,6 +181,19 @@ function readBenchmarkConfig(): BenchmarkConfig {
   };
 }
 
+function createBenchmarkTTSConfig(model: KittenModel) {
+  return {
+    model,
+    player: createBenchmarkPlayer(),
+    ...(Platform.OS === 'web'
+      ? {
+          ortWasmPath: '/ort/',
+          ortNumThreads: 1,
+        }
+      : null),
+  };
+}
+
 function makeFailedBenchmarkRow(
   model: KittenModel,
   failedStage: string,
@@ -233,7 +246,7 @@ export default function App() {
       setBenchmarkReport(null);
 
       const instance = await KittenTTS.create(
-        {model, player: createBenchmarkPlayer()},
+        createBenchmarkTTSConfig(model),
         (progress, info) => {
           if (mountedRef.current && info?.stage === 'downloading') {
             setState({
@@ -381,7 +394,7 @@ export default function App() {
             existingInstance ??
             (await withTimeout(
               KittenTTS.create(
-                {model, player: createBenchmarkPlayer()},
+                createBenchmarkTTSConfig(model),
                 (progress, info) => {
                   if (mountedRef.current && info?.stage === 'downloading') {
                     setState({

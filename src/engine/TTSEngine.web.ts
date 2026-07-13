@@ -395,13 +395,8 @@ async function configureOnnxRuntime(
     return;
   }
 
-  const wasmFileName = supportsThreadedWasm()
-    ? 'ort-wasm-simd-threaded.wasm'
-    : 'ort-wasm-simd.wasm';
   ort.env.wasm.numThreads = supportsThreadedWasm() ? config.ortNumThreads : 1;
-  ort.env.wasm.wasmPaths = {
-    wasm: `${defaultOrtWasmBaseURL()}${wasmFileName}`,
-  };
+  ort.env.wasm.wasmPaths = defaultOrtWasmBaseURL();
 }
 
 async function configureNodeOnnxRuntime(ort: OrtRuntime): Promise<void> {
