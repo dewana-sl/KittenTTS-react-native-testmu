@@ -247,7 +247,9 @@ export default function App() {
       'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
         'This benchmark compares every model for speed, quality, and consistency.',
   );
-  const [selectedModel, setSelectedModel] = useState(KittenModel.Nano);
+  const [selectedModel, setSelectedModel] = useState(
+    benchmarkConfig.models[0] ?? KittenModel.Nano,
+  );
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);
   const [selectedSpeed, setSelectedSpeed] = useState(1.0);
   const [result, setResult] = useState<KittenTTSResult | null>(null);
