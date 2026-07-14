@@ -46,8 +46,10 @@ exports.config = {
   logLevel: "info",
   bail: 0,
   waitforTimeout: 60000,
-  connectionRetryTimeout: 300000,
-  connectionRetryCount: 2,
+  connectionRetryTimeout: Number(
+    process.env.TESTMU_CONNECTION_RETRY_TIMEOUT_MS || 900000
+  ),
+  connectionRetryCount: Number(process.env.TESTMU_CONNECTION_RETRY_COUNT || 1),
 
   framework: "mocha",
   reporters: ["spec"],
