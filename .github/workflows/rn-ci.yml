@@ -18,9 +18,19 @@ env:
     This benchmark compares every model for speed, quality, and consistency.
 
 jobs:
+  benchmark-approval:
+    name: Maintainer approval for benchmarks
+    runs-on: ubuntu-latest
+    environment:
+      name: testmu-benchmarks
+
+    steps:
+      - run: echo "Benchmark run approved."
+
   sdk:
     name: SDK typecheck and tests
     runs-on: ubuntu-latest
+    needs: benchmark-approval
 
     steps:
       - uses: actions/checkout@v4
@@ -33,20 +43,10 @@ jobs:
       - run: npm ci
       - run: npm test
 
-  benchmark-approval:
-    name: Maintainer approval for benchmarks
-    runs-on: ubuntu-latest
-    needs: sdk
-    environment:
-      name: testmu-benchmarks
-
-    steps:
-      - run: echo "Benchmark run approved."
-
   ios-unsigned-package:
     name: Benchmark app iOS unsigned IPA
     runs-on: macos-latest
-    needs: benchmark-approval
+    needs: sdk
     outputs:
       app_url: ${{ steps.upload-unsigned-ios-app.outputs.app_url }}
 
@@ -306,7 +306,7 @@ jobs:
   web-example:
     name: Benchmark app web build
     runs-on: ubuntu-latest
-    needs: benchmark-approval
+    needs: sdk
 
     steps:
       - uses: actions/checkout@v4
