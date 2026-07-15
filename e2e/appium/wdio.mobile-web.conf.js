@@ -32,6 +32,7 @@ exports.config = {
     {
       platformName,
       browserName,
+      pageLoadStrategy: "none",
       "appium:deviceName": deviceName,
       "appium:platformVersion": platformVersion,
       "appium:newCommandTimeout": 900,

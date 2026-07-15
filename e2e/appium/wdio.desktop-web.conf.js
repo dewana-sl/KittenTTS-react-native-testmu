@@ -32,6 +32,7 @@ exports.config = {
     {
       browserName,
       browserVersion,
+      pageLoadStrategy: "none",
       "LT:Options": {
         platformName,
         build: process.env.GITHUB_RUN_ID
