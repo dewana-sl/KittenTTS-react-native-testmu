@@ -342,6 +342,14 @@ jobs:
           NODE
         working-directory: benchmark/app
 
+      - name: Bundle web benchmark model assets
+        run: |
+          rm -rf public/kittentts
+          npx --no-install kittentts-react-native bundle-assets \
+            --all \
+            --out public/kittentts
+        working-directory: benchmark/app
+
       - name: Build web benchmark app
         run: npm run build:web
         working-directory: benchmark/app
@@ -730,7 +738,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=180000&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
@@ -739,7 +747,7 @@ jobs:
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_WDIO_SCRIPT: ${{ matrix.wdio_script }}
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 900000
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
           TESTMU_EXPECTED_MODELS: ${{ matrix.models }}
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
@@ -786,7 +794,7 @@ jobs:
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
-          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=180000&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
@@ -823,6 +831,41 @@ jobs:
         run: |
           echo "The ${{ matrix.device }} / ${{ matrix.browser }} web benchmark failed. Uploaded the failure report artifact above."
           exit 1
+
+      - name: Fail web benchmark job if model rows failed
+        if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success' && steps.run-web-benchmark.outcome == 'success'
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const reportsDir = path.resolve('e2e/appium/reports');
+          const jsonFiles = fs.existsSync(reportsDir)
+            ? fs.readdirSync(reportsDir).filter((file) => file.endsWith('.json'))
+            : [];
+          if (jsonFiles.length === 0) {
+            throw new Error('No web benchmark JSON report was uploaded by the device job.');
+          }
+          const failures = [];
+          for (const file of jsonFiles) {
+            const report = JSON.parse(fs.readFileSync(path.join(reportsDir, file), 'utf8'));
+            if (report.status === 'failed' || report.status === 'partial') {
+              failures.push(`${report.device || file}: ${report.errorSummary || report.failedStage || report.status}`);
+            }
+            for (const row of report.rows || []) {
+              if (row.status === 'failed') {
+                failures.push(`${report.device || file}: ${row.modelDisplayName || row.model}: ${row.errorSummary || row.failedStage || 'failed'}`);
+              }
+            }
+          }
+          if (failures.length > 0) {
+            console.error('Web benchmark model failures:');
+            for (const failure of failures) {
+              console.error(`- ${failure}`);
+            }
+            process.exit(1);
+          }
+          console.log('No web benchmark model failures found.');
+          NODE
 
   testmu-benchmark-report:
     name: TestMu benchmark report
