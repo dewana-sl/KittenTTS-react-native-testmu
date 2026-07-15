@@ -21,12 +21,10 @@ import {
   KittenModel,
   KittenVoice,
   KittenTTSResult,
-  createBundledAssetConfig,
   modelDisplayName,
   voiceDisplayName,
   ALL_VOICES,
 } from '@kittentts/react-native';
-import type {KittenTTSBundledAssetsManifest} from '@kittentts/react-native';
 import {createBenchmarkPlayer} from './benchmarkPlayer';
 
 type AppState =
@@ -131,7 +129,6 @@ type BenchmarkConfig = {
   includeAudio: boolean;
   autoStart: boolean;
   modelTimeoutMs: number;
-  bundledAssetsPath: string | null;
 };
 
 function e2eTextProps(testID: string) {
@@ -211,7 +208,6 @@ function readBenchmarkConfig(): BenchmarkConfig {
     modelTimeoutMs: parseModelTimeoutMs(
       getWebSearchParam('benchmarkModelTimeoutMs'),
     ),
-    bundledAssetsPath: getWebSearchParam('benchmarkBundledAssetsPath'),
   };
 }
 
@@ -269,41 +265,8 @@ function describeAppState(state: AppState): string {
   }
 }
 
-const bundledManifestCache = new Map<
-  string,
-  Promise<KittenTTSBundledAssetsManifest | null>
->();
-
-async function readBundledAssetsManifest(
-  basePath: string,
-): Promise<KittenTTSBundledAssetsManifest | null> {
-  const normalizedBasePath = basePath.replace(/\/+$/, '');
-  const cached = bundledManifestCache.get(normalizedBasePath);
-  if (cached) {
-    return cached;
-  }
-
-  const promise = fetch(`${normalizedBasePath}/manifest.json`).then(response => {
-    if (response.status === 404) {
-      return null;
-    }
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status} loading bundled assets manifest`,
-      );
-    }
-    return response.json() as Promise<KittenTTSBundledAssetsManifest>;
-  });
-
-  bundledManifestCache.set(normalizedBasePath, promise);
-  return promise;
-}
-
-async function createBenchmarkTTSConfig(
-  model: KittenModel,
-  bundledAssetsPath: string | null,
-) {
-  const commonConfig = {
+function createBenchmarkTTSConfig(model: KittenModel) {
+  return {
     model,
     player: createBenchmarkPlayer(),
     ...(Platform.OS === 'web'
@@ -313,22 +276,6 @@ async function createBenchmarkTTSConfig(
         }
       : null),
   };
-
-  if (Platform.OS !== 'web') {
-    return commonConfig;
-  }
-
-  const basePath = bundledAssetsPath || '/kittentts';
-  const manifest = await readBundledAssetsManifest(basePath);
-  if (!manifest) {
-    return commonConfig;
-  }
-
-  return createBundledAssetConfig(manifest, {
-    ...commonConfig,
-    basePath,
-    model,
-  });
 }
 
 function makeFailedBenchmarkRow(
@@ -400,10 +347,7 @@ export default function App() {
       setBenchmarkReport(null);
 
       const instance = await KittenTTS.create(
-        await createBenchmarkTTSConfig(
-          model,
-          benchmarkConfig.bundledAssetsPath,
-        ),
+        createBenchmarkTTSConfig(model),
         (progress, info) => {
           if (mountedRef.current && info?.stage === 'downloading') {
             setState({
@@ -432,7 +376,7 @@ export default function App() {
         });
       }
     }
-  }, [benchmarkConfig.bundledAssetsPath]);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -552,11 +496,9 @@ export default function App() {
           instance =
             existingInstance ??
             (await withTimeout(
-              createBenchmarkTTSConfig(
-                model,
-                benchmarkConfig.bundledAssetsPath,
-              ).then(config =>
-                KittenTTS.create(config, (progress, info) => {
+              KittenTTS.create(
+                createBenchmarkTTSConfig(model),
+                (progress, info) => {
                   if (mountedRef.current && info?.stage === 'downloading') {
                     setState({
                       kind: 'benchmarking',
@@ -567,7 +509,7 @@ export default function App() {
                       total: benchmarkModels.length,
                     });
                   }
-                }),
+                },
               ),
               benchmarkConfig.modelTimeoutMs,
               `Timed out preparing ${modelDisplayName(model)}`,

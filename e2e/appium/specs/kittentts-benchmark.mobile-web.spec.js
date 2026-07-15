@@ -544,6 +544,8 @@ describe("KittenTTS React Native web benchmark", () => {
     expect(report.characterLength).toBeGreaterThan(0);
     expect(report.rows.length).toBe(EXPECTED_MODELS.length);
 
+    const failedRows = [];
+
     for (const expectedModel of EXPECTED_MODELS) {
       const row = report.rows.find(
         (candidate) => candidate.model === expectedModel
@@ -582,9 +584,19 @@ describe("KittenTTS React Native web benchmark", () => {
         throw new Error(
           `Failed row for ${expectedModel} did not include an error summary.`
         );
+      } else {
+        failedRows.push(row);
       }
     }
 
     writeDeviceReport(report, deviceStartedAtMs);
+
+    if (failedRows.length > 0) {
+      throw new Error(
+        `Benchmark completed with ${failedRows.length} failed model row(s): ${failedRows
+          .map((row) => `${row.model}: ${row.errorSummary}`)
+          .join("; ")}`
+      );
+    }
   });
 });

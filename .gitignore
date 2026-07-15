@@ -21,7 +21,6 @@ examples/Expo*/ios/
 examples/OfflineBundledAssetsExample/android/
 examples/OfflineBundledAssetsExample/ios/
 examples/OfflineBundledAssetsExample/assets/kittentts/
-benchmark/app/public/kittentts/
 
 # Logs and caches
 lib/
