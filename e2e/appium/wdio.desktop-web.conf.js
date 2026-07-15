@@ -63,6 +63,6 @@ exports.config = {
   reporters: ["spec"],
   mochaOpts: {
     ui: "bdd",
-    timeout: 1800000,
+    timeout: Number(process.env.TESTMU_MOCHA_TIMEOUT_MS || 45 * 60 * 1000),
   },
 };

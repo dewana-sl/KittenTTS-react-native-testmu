@@ -15,6 +15,11 @@ function slugify(value) {
 function findErrorSummary(logText) {
   const lines = stripAnsi(logText).split(/\r?\n/).filter(Boolean);
   const usefulPatterns = [
+    /Web app benchmark status/i,
+    /Web app error/i,
+    /Diagnostics/i,
+    /Downloading model/i,
+    /loading bundled assets/i,
     /App showed error-banner/i,
     /Timed out waiting/i,
     /still not enabled/i,
