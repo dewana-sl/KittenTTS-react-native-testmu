@@ -32,7 +32,6 @@ exports.config = {
     {
       browserName,
       browserVersion,
-      pageLoadStrategy: "none",
       "LT:Options": {
         platformName,
         build: process.env.GITHUB_RUN_ID
@@ -55,15 +54,13 @@ exports.config = {
   logLevel: "info",
   bail: 0,
   waitforTimeout: 60000,
-  connectionRetryTimeout: Number(
-    process.env.TESTMU_CONNECTION_RETRY_TIMEOUT_MS || 900000
-  ),
-  connectionRetryCount: Number(process.env.TESTMU_CONNECTION_RETRY_COUNT || 1),
+  connectionRetryTimeout: 300000,
+  connectionRetryCount: 2,
 
   framework: "mocha",
   reporters: ["spec"],
   mochaOpts: {
     ui: "bdd",
-    timeout: Number(process.env.TESTMU_MOCHA_TIMEOUT_MS || 45 * 60 * 1000),
+    timeout: 1800000,
   },
 };

@@ -96,19 +96,6 @@ type BenchmarkReport = {
   rows: BenchmarkRow[];
 };
 
-type WebBenchmarkState = {
-  appMounted?: boolean;
-  autoStart?: boolean;
-  autoStartTriggered?: boolean;
-  ready?: boolean;
-  working?: boolean;
-  stateKind?: AppState['kind'];
-  status?: string;
-  error?: string | null;
-  report?: BenchmarkReport | null;
-  updatedAt?: string;
-};
-
 const DEFAULT_BENCHMARK_MODELS: KittenModel[] = [
   KittenModel.Nano,
   KittenModel.NanoInt8,
@@ -218,7 +205,6 @@ function publishWebBenchmarkReport(report: BenchmarkReport) {
 
   (globalThis as {__KITTEN_BENCHMARK_REPORT__?: BenchmarkReport})
     .__KITTEN_BENCHMARK_REPORT__ = report;
-  publishWebBenchmarkState({report});
 }
 
 function publishWebBenchmarkError(message: string) {
@@ -228,41 +214,6 @@ function publishWebBenchmarkError(message: string) {
 
   (globalThis as {__KITTEN_BENCHMARK_ERROR__?: string})
     .__KITTEN_BENCHMARK_ERROR__ = message;
-  publishWebBenchmarkState({error: message});
-}
-
-function publishWebBenchmarkState(partial: WebBenchmarkState) {
-  if (Platform.OS !== 'web') {
-    return;
-  }
-
-  const scope = globalThis as {
-    __KITTEN_BENCHMARK_STATE__?: WebBenchmarkState;
-  };
-  scope.__KITTEN_BENCHMARK_STATE__ = {
-    ...(scope.__KITTEN_BENCHMARK_STATE__ ?? {}),
-    ...partial,
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function describeAppState(state: AppState): string {
-  switch (state.kind) {
-    case 'idle':
-      return 'Idle';
-    case 'preparing':
-      return 'Preparing model';
-    case 'downloading':
-      return `Downloading model ${Math.round(state.progress * 100)}%`;
-    case 'generating':
-      return 'Generating speech';
-    case 'benchmarking':
-      return `Benchmarking ${state.model} (${state.completed + 1}/${state.total})`;
-    case 'playing':
-      return 'Playing';
-    case 'error':
-      return state.message;
-  }
 }
 
 function createBenchmarkTTSConfig(model: KittenModel) {
@@ -324,20 +275,6 @@ export default function App() {
     state.kind === 'generating' ||
     state.kind === 'benchmarking' ||
     state.kind === 'playing';
-
-  useEffect(() => {
-    publishWebBenchmarkState({
-      appMounted: true,
-      autoStart: benchmarkConfig.autoStart,
-      autoStartTriggered: autoBenchmarkStartedRef.current,
-      ready: Boolean(ttsRef.current && inputText.trim() && !isWorking),
-      working: isWorking,
-      stateKind: state.kind,
-      status: describeAppState(state),
-      error: state.kind === 'error' ? state.message : null,
-      report: benchmarkReport,
-    });
-  }, [benchmarkConfig.autoStart, benchmarkReport, inputText, isWorking, state]);
 
   const initTTS = useCallback(async (model: KittenModel) => {
     try {
@@ -663,7 +600,6 @@ export default function App() {
     }
 
     autoBenchmarkStartedRef.current = true;
-    publishWebBenchmarkState({autoStartTriggered: true});
     handleBenchmark();
   }, [benchmarkConfig.autoStart, handleBenchmark, inputText, isWorking]);
 

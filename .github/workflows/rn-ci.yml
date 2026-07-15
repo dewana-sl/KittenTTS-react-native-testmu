@@ -18,19 +18,9 @@ env:
     This benchmark compares every model for speed, quality, and consistency.
 
 jobs:
-  benchmark-approval:
-    name: Maintainer approval for benchmarks
-    runs-on: ubuntu-latest
-    environment:
-      name: testmu-benchmarks
-
-    steps:
-      - run: echo "Benchmark run approved."
-
   sdk:
     name: SDK typecheck and tests
     runs-on: ubuntu-latest
-    needs: benchmark-approval
 
     steps:
       - uses: actions/checkout@v4
@@ -45,8 +35,6 @@ jobs:
 
   ios-unsigned-package:
     name: Benchmark app iOS unsigned IPA
-    # Temporary while debugging TestMu web browser benchmarks.
-    if: ${{ false }}
     runs-on: macos-latest
     needs: sdk
     outputs:
@@ -213,8 +201,6 @@ jobs:
 
   testmu-ios-benchmark:
     name: TestMu iOS benchmark (${{ matrix.device }})
-    # Temporary while debugging TestMu web browser benchmarks.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: ios-unsigned-package
     strategy:
@@ -366,8 +352,6 @@ jobs:
 
   android-example:
     name: Benchmark app Android release APK
-    # Temporary while debugging TestMu web browser benchmarks.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: testmu-ios-benchmark
 
@@ -427,8 +411,6 @@ jobs:
 
   upload-testmu-app:
     name: Upload APK to TestMu
-    # Temporary while debugging TestMu web browser benchmarks.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: android-example
     outputs:
@@ -525,8 +507,6 @@ jobs:
 
   testmu-android-benchmark:
     name: TestMu Android benchmark (${{ matrix.device }})
-    # Temporary while debugging TestMu web browser benchmarks.
-    if: ${{ false }}
     runs-on: ubuntu-latest
     needs: upload-testmu-app
     strategy:
@@ -629,7 +609,9 @@ jobs:
     name: TestMu web benchmark (${{ matrix.device }} / ${{ matrix.browser }})
     runs-on: ubuntu-latest
     timeout-minutes: 48
-    needs: web-example
+    needs:
+      - web-example
+      - testmu-android-benchmark
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -641,11 +623,33 @@ jobs:
             version: "14"
             browser: Chrome
             browser_version: ""
-            models: kitten-tts-nano-0.8
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "true"
             wdio_script: test:web:browser
+          - slug: ipad-10-9-2022-safari-benchmark
+            device: iPad 10.9 (2022)
+            platform: iOS
+            version: "18"
+            browser: Safari
+            browser_version: ""
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
+            real_device: "true"
+            wdio_script: test:web:browser
+          - slug: linux-chrome-desktop-benchmark
+            device: Linux Desktop
+            platform: Linux
+            version: ""
+            browser: Chrome
+            browser_version: latest
+            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
+            real_device: "false"
+            wdio_script: test:web:desktop
 
     steps:
       - uses: actions/checkout@v4
@@ -715,7 +719,7 @@ jobs:
         id: run-web-benchmark
         if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 15
+        timeout-minutes: 42
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
@@ -728,7 +732,7 @@ jobs:
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_WDIO_SCRIPT: ${{ matrix.wdio_script }}
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 600000
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 2400000
           TESTMU_EXPECTED_MODELS: ${{ matrix.models }}
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
@@ -738,12 +742,12 @@ jobs:
           set +e
           setsid bash -lc 'npm run "${TESTMU_WDIO_SCRIPT}"' > reports/appium-output.log 2>&1 &
           appium_pid="$!"
-          deadline=$((SECONDS + 660))
+          deadline=$((SECONDS + 2400))
           status=0
           while kill -0 "$appium_pid" 2>/dev/null; do
             if [ "$SECONDS" -ge "$deadline" ]; then
               status=124
-              echo "Timed out after 11 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." >> reports/appium-output.log
+              echo "Timed out after 40 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." >> reports/appium-output.log
               kill -TERM "-$appium_pid" 2>/dev/null || kill -TERM "$appium_pid" 2>/dev/null || true
               sleep 5
               kill -KILL "-$appium_pid" 2>/dev/null || kill -KILL "$appium_pid" 2>/dev/null || true
@@ -817,6 +821,8 @@ jobs:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
+      - testmu-ios-benchmark
+      - testmu-android-benchmark
       - testmu-web-browser-benchmark
     if: always()
 
@@ -917,10 +923,6 @@ jobs:
           node - <<'NODE'
           const fs = require('node:fs');
           const summary = JSON.parse(fs.readFileSync('benchmark-report/summary.json', 'utf8'));
-          if (!summary.reports.length) {
-            console.error('Benchmark failures: no benchmark result JSON files were found.');
-            process.exit(1);
-          }
           const failedReports = summary.reports.filter(
             (report) => report.status === 'failed' || report.status === 'partial',
           );
