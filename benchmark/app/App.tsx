@@ -283,7 +283,7 @@ export default function App() {
       setResult(null);
       setBenchmarkReport(null);
 
-      const instance = await KittenTTS.create(
+      const createPromise = KittenTTS.create(
         createBenchmarkTTSConfig(model),
         (progress, info) => {
           if (mountedRef.current && info?.stage === 'downloading') {
@@ -294,6 +294,14 @@ export default function App() {
           }
         },
       );
+      const instance =
+        Platform.OS === 'web' && benchmarkConfig.autoStart
+          ? await withTimeout(
+              createPromise,
+              benchmarkConfig.modelTimeoutMs,
+              `Timed out preparing ${modelDisplayName(model)}`,
+            )
+          : await createPromise;
 
       if (!mountedRef.current) {
         if (!__DEV__) await instance.dispose();
@@ -313,10 +321,17 @@ export default function App() {
         });
       }
     }
-  }, []);
+  }, [benchmarkConfig.autoStart, benchmarkConfig.modelTimeoutMs]);
 
   useEffect(() => {
     mountedRef.current = true;
+    if (Platform.OS === 'web' && benchmarkConfig.autoStart) {
+      return () => {
+        mountedRef.current = false;
+        ttsRef.current = null;
+      };
+    }
+
     initTTS(selectedModel);
     return () => {
       mountedRef.current = false;
@@ -369,7 +384,7 @@ export default function App() {
   const handleBenchmark = useCallback(async () => {
     const sampleText = inputText.trim();
 
-    if (!sampleText || !ttsRef.current) {
+    if (!sampleText) {
       return;
     }
 
@@ -593,7 +608,6 @@ export default function App() {
       !benchmarkConfig.autoStart ||
       autoBenchmarkStartedRef.current ||
       isWorking ||
-      !ttsRef.current ||
       !inputText.trim()
     ) {
       return;

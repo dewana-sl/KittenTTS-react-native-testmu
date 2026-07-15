@@ -623,7 +623,7 @@ jobs:
             version: "14"
             browser: Chrome
             browser_version: ""
-            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "true"
@@ -634,7 +634,7 @@ jobs:
             version: "18"
             browser: Safari
             browser_version: ""
-            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "true"
@@ -645,7 +645,7 @@ jobs:
             version: ""
             browser: Chrome
             browser_version: latest
-            models: kitten-tts-nano-0.8,kitten-tts-nano-0.8-int8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
             sample_text: KittenTTS web benchmark.
             sample_text_query: KittenTTS%20web%20benchmark.
             real_device: "false"
@@ -684,11 +684,14 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports
+          runner_host="$(hostname -I | awk '{print $1}')"
+          echo "host=$runner_host" >> "$GITHUB_OUTPUT"
           npm run preview:web > reports/web-preview.log 2>&1 &
           echo "$!" > reports/web-preview.pid
           for attempt in $(seq 1 30); do
             if curl -fsS "http://127.0.0.1:4173" >/dev/null; then
               echo "Web benchmark preview is ready."
+              echo "Web benchmark private URL: http://$runner_host:4173"
               exit 0
             fi
             sleep 2
@@ -723,7 +726,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=600000&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=180000&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
@@ -732,7 +735,7 @@ jobs:
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_WDIO_SCRIPT: ${{ matrix.wdio_script }}
-          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 2400000
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 900000
           TESTMU_EXPECTED_MODELS: ${{ matrix.models }}
           TESTMU_EXPECTED_WARM_RUNS: "1"
           TESTMU_REQUIRE_WER_AUDIO: true
@@ -779,7 +782,7 @@ jobs:
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
-          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=600000&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=180000&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
