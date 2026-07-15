@@ -78,6 +78,11 @@ async function readElementText(testId) {
 }
 
 async function readBenchmarkReport(testId) {
+  const webState = await getWebBenchmarkState();
+  if (webState?.report) {
+    return webState.report;
+  }
+
   const globalReport = await browser
     .execute(() => globalThis.__KITTEN_BENCHMARK_REPORT__ || null)
     .catch(() => null);
@@ -92,6 +97,12 @@ async function readBenchmarkReport(testId) {
   } catch {
     return null;
   }
+}
+
+async function getWebBenchmarkState() {
+  return browser
+    .execute(() => globalThis.__KITTEN_BENCHMARK_STATE__ || null)
+    .catch(() => null);
 }
 
 async function attachWerAudioChunksDirect(report) {
@@ -304,11 +315,78 @@ async function getPageSourceSummary() {
   }
 }
 
+async function getBrowserDiagnostics() {
+  const [state, title, url, bodyText, sourceSummary] = await Promise.all([
+    getWebBenchmarkState(),
+    browser.getTitle().catch((error) => `Could not read title: ${error.message}`),
+    browser.getUrl().catch((error) => `Could not read URL: ${error.message}`),
+    browser
+      .execute(() => document.body?.innerText || document.body?.textContent || "")
+      .catch((error) => `Could not read body text: ${error.message}`),
+    getPageSourceSummary(),
+  ]);
+
+  return {
+    title,
+    url,
+    state,
+    bodyText: String(bodyText || "").replace(/\s+/g, " ").slice(0, 1200),
+    sourceSummary,
+  };
+}
+
+function summarizeDiagnostics(diagnostics) {
+  return JSON.stringify(diagnostics, null, 2).slice(0, 5000);
+}
+
+async function waitForWebAppLoaded(timeoutMs) {
+  const startedAt = Date.now();
+  let lastState = null;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const state = await getWebBenchmarkState();
+    if (state) {
+      lastState = state;
+
+      if (state.error) {
+        throw new Error(`Web app error before benchmark: ${state.error}`);
+      }
+
+      if (state.appMounted || state.ready || state.report) {
+        return state;
+      }
+    }
+
+    await browser.pause(2000);
+  }
+
+  const diagnostics = await getBrowserDiagnostics();
+  throw new Error(
+    `Timed out waiting for web app load after ${timeoutMs}ms. Last bridge state: ${JSON.stringify(
+      lastState
+    )}. Diagnostics: ${summarizeDiagnostics(diagnostics)}`
+  );
+}
+
 async function waitForWebReady(timeoutMs) {
   const startedAt = Date.now();
   let lastStatus = "No web status captured yet.";
 
   while (Date.now() - startedAt < timeoutMs) {
+    const state = await getWebBenchmarkState();
+    if (state) {
+      if (state.error) {
+        throw new Error(`Web app error before benchmark: ${state.error}`);
+      }
+      if (state.status && state.status !== lastStatus) {
+        lastStatus = state.status;
+        console.log(`[KittenTTS web status] ${state.status}`);
+      }
+      if (state.ready) {
+        return findByTestId("benchmark-button");
+      }
+    }
+
     const errorMessage = await getOptionalText("error-message");
     if (errorMessage) {
       throw new Error(
@@ -331,9 +409,11 @@ async function waitForWebReady(timeoutMs) {
     await browser.pause(5000);
   }
 
-  const sourceSummary = await getPageSourceSummary();
+  const diagnostics = await getBrowserDiagnostics();
   throw new Error(
-    `Timed out waiting for web app readiness after ${timeoutMs}ms. Last web status: ${lastStatus}. Page source: ${sourceSummary}`
+    `Timed out waiting for web app readiness after ${timeoutMs}ms. Last web status: ${lastStatus}. Diagnostics: ${summarizeDiagnostics(
+      diagnostics
+    )}`
   );
 }
 
@@ -350,6 +430,15 @@ async function waitForBenchmarkReport(timeoutMs) {
         const includeAudio = process.env.TESTMU_REQUIRE_WER_AUDIO !== "false";
         return (await getBenchmarkReportFromUi({ includeAudio })) || report;
       }
+    }
+
+    const state = await getWebBenchmarkState();
+    if (state?.error) {
+      throw new Error(`Web app benchmark error: ${state.error}`);
+    }
+    if (state?.status && state.status !== lastStatus) {
+      lastStatus = state.status;
+      console.log(`[KittenTTS web benchmark status] ${state.status}`);
     }
 
     const globalError = await browser
@@ -378,7 +467,10 @@ async function waitForBenchmarkReport(timeoutMs) {
     return markPartialReport(lastReport, timeoutMessage);
   }
 
-  throw new Error(timeoutMessage);
+  const diagnostics = await getBrowserDiagnostics();
+  throw new Error(
+    `${timeoutMessage}. Diagnostics: ${summarizeDiagnostics(diagnostics)}`
+  );
 }
 
 describe("KittenTTS React Native web benchmark", () => {
@@ -388,6 +480,7 @@ describe("KittenTTS React Native web benchmark", () => {
     const autoBenchmark = /benchmarkAutoStart=true/.test(webUrl);
 
     await browser.url(webUrl);
+    const loadedState = await waitForWebAppLoaded(WEB_READY_TIMEOUT_MS);
 
     let benchmark = null;
     if (!autoBenchmark) {
@@ -431,6 +524,16 @@ describe("KittenTTS React Native web benchmark", () => {
     }
 
     if (!autoBenchmark) {
+      await benchmark.click();
+    } else if (
+      loadedState?.ready &&
+      loadedState?.autoStart &&
+      !loadedState?.autoStartTriggered
+    ) {
+      console.warn(
+        "[KittenTTS web benchmark] Auto-start was requested but not triggered after app load; clicking benchmark button as a fallback."
+      );
+      benchmark = await findByTestId("benchmark-button");
       await benchmark.click();
     }
 
