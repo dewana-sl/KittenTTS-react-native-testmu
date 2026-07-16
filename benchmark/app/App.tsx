@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from 'react';
+import React, {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -16,17 +10,18 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
-import Sound from 'react-native-sound';
 import {
   KittenTTS,
   KittenModel,
   KittenVoice,
   KittenTTSResult,
+  createBundledAssetConfig,
   modelDisplayName,
   voiceDisplayName,
   ALL_VOICES,
-  createRNSoundPlayer,
 } from '@kittentts/react-native';
+import type {KittenTTSBundledAssetsManifest} from '@kittentts/react-native';
+import {createBenchmarkPlayer} from './benchmarkPlayer';
 
 type AppState =
   | {kind: 'idle'}
@@ -97,7 +92,7 @@ type BenchmarkReport = {
   rows: BenchmarkRow[];
 };
 
-const MODELS: KittenModel[] = [
+const DEFAULT_BENCHMARK_MODELS: KittenModel[] = [
   KittenModel.Nano,
   KittenModel.NanoInt8,
   KittenModel.Micro,
@@ -105,10 +100,20 @@ const MODELS: KittenModel[] = [
 ];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-const BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
-const BENCHMARK_WARM_RUNS = 5;
+const DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS = 90 * 1000;
+const DEFAULT_BENCHMARK_WARM_RUNS = 5;
 const WER_AUDIO_CHUNK_SIZE = 64000;
 const ANDROID_DIRECT_AUDIO_MIN_API = 31;
+
+type BenchmarkConfig = {
+  models: KittenModel[];
+  warmRuns: number;
+  sampleText: string | null;
+  includeAudio: boolean;
+  autoStart: boolean;
+  modelTimeoutMs: number;
+  bundledAssetsPath: string | null;
+};
 
 function e2eTextProps(testID: string) {
   if (Platform.OS === 'android') {
@@ -129,6 +134,150 @@ function androidApiVersion() {
   return typeof Platform.Version === 'number'
     ? Platform.Version
     : Number.parseInt(String(Platform.Version), 10) || 0;
+}
+
+function getWebSearchParam(name: string): string | null {
+  if (Platform.OS !== 'web') {
+    return null;
+  }
+
+  try {
+    return new URLSearchParams(globalThis.location?.search ?? '').get(name);
+  } catch {
+    return null;
+  }
+}
+
+function parseBenchmarkModels(value: string | null): KittenModel[] {
+  if (!value) {
+    return DEFAULT_BENCHMARK_MODELS;
+  }
+
+  const allowedModels = new Set(Object.values(KittenModel));
+  const models = value
+    .split(',')
+    .map(model => model.trim())
+    .filter((model): model is KittenModel =>
+      allowedModels.has(model as KittenModel),
+    );
+
+  return models.length > 0 ? models : DEFAULT_BENCHMARK_MODELS;
+}
+
+function parseWarmRuns(value: string | null): number {
+  const runs = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(runs)) {
+    return DEFAULT_BENCHMARK_WARM_RUNS;
+  }
+
+  return Math.max(1, Math.min(10, runs));
+}
+
+function parseModelTimeoutMs(value: string | null): number {
+  const timeoutMs = Number.parseInt(value ?? '', 10);
+  if (!Number.isFinite(timeoutMs)) {
+    return DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS;
+  }
+
+  return Math.max(30_000, Math.min(900_000, timeoutMs));
+}
+
+function readBenchmarkConfig(): BenchmarkConfig {
+  return {
+    models: parseBenchmarkModels(getWebSearchParam('benchmarkModels')),
+    warmRuns: parseWarmRuns(getWebSearchParam('benchmarkWarmRuns')),
+    sampleText: getWebSearchParam('benchmarkText'),
+    includeAudio: getWebSearchParam('benchmarkIncludeAudio') !== 'false',
+    autoStart: getWebSearchParam('benchmarkAutoStart') === 'true',
+    modelTimeoutMs: parseModelTimeoutMs(
+      getWebSearchParam('benchmarkModelTimeoutMs'),
+    ),
+    bundledAssetsPath: getWebSearchParam('benchmarkBundledAssetsPath'),
+  };
+}
+
+function publishWebBenchmarkReport(report: BenchmarkReport) {
+  if (Platform.OS !== 'web') {
+    return;
+  }
+
+  (
+    globalThis as {__KITTEN_BENCHMARK_REPORT__?: BenchmarkReport}
+  ).__KITTEN_BENCHMARK_REPORT__ = report;
+}
+
+function publishWebBenchmarkError(message: string) {
+  if (Platform.OS !== 'web') {
+    return;
+  }
+
+  (
+    globalThis as {__KITTEN_BENCHMARK_ERROR__?: string}
+  ).__KITTEN_BENCHMARK_ERROR__ = message;
+}
+
+const bundledManifestCache = new Map<
+  string,
+  Promise<KittenTTSBundledAssetsManifest | null>
+>();
+
+async function readBundledAssetsManifest(
+  basePath: string,
+): Promise<KittenTTSBundledAssetsManifest | null> {
+  const normalizedBasePath = basePath.replace(/\/+$/, '');
+  const cached = bundledManifestCache.get(normalizedBasePath);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = fetch(`${normalizedBasePath}/manifest.json`).then(
+    response => {
+      if (response.status === 404) {
+        return null;
+      }
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status} loading bundled assets manifest`,
+        );
+      }
+      return response.json() as Promise<KittenTTSBundledAssetsManifest>;
+    },
+  );
+
+  bundledManifestCache.set(normalizedBasePath, promise);
+  return promise;
+}
+
+async function createBenchmarkTTSConfig(
+  model: KittenModel,
+  bundledAssetsPath: string | null,
+) {
+  const commonConfig = {
+    model,
+    player: createBenchmarkPlayer(),
+    ...(Platform.OS === 'web'
+      ? {
+          ortWasmPath: '/ort/',
+          ortNumThreads: 1,
+        }
+      : null),
+  };
+
+  if (Platform.OS !== 'web') {
+    return commonConfig;
+  }
+
+  const basePath = bundledAssetsPath || '/kittentts';
+  const manifest = await readBundledAssetsManifest(basePath);
+  if (!manifest) {
+    return commonConfig;
+  }
+
+  return createBundledAssetConfig(manifest, {
+    ...commonConfig,
+    basePath,
+    model,
+  });
 }
 
 function makeFailedBenchmarkRow(
@@ -154,12 +303,17 @@ export default function App() {
   const [tts, setTts] = useState<KittenTTS | null>(null);
   const ttsRef = useRef<KittenTTS | null>(null);
   const mountedRef = useRef(true);
+  const autoBenchmarkStartedRef = useRef(false);
   const [state, setState] = useState<AppState>({kind: 'idle'});
+  const benchmarkConfig = useMemo(readBenchmarkConfig, []);
   const [inputText, setInputText] = useState(
-    'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
-      'This benchmark compares every model for speed, quality, and consistency.',
+    benchmarkConfig.sampleText ||
+      'KittenTTS runs fully on your device and creates clear speech quickly.\n' +
+        'This benchmark compares every model for speed, quality, and consistency.',
   );
-  const [selectedModel, setSelectedModel] = useState(KittenModel.Nano);
+  const [selectedModel, setSelectedModel] = useState(
+    benchmarkConfig.models[0] ?? KittenModel.Nano,
+  );
   const [selectedVoice, setSelectedVoice] = useState(KittenVoice.Bella);
   const [selectedSpeed, setSelectedSpeed] = useState(1.0);
   const [result, setResult] = useState<KittenTTSResult | null>(null);
@@ -173,47 +327,70 @@ export default function App() {
     state.kind === 'benchmarking' ||
     state.kind === 'playing';
 
-  const initTTS = useCallback(async (model: KittenModel) => {
-    try {
-      await ttsRef.current?.dispose();
-      setState({kind: 'preparing'});
-      setResult(null);
-      setBenchmarkReport(null);
+  const initTTS = useCallback(
+    async (model: KittenModel) => {
+      try {
+        await ttsRef.current?.dispose();
+        setState({kind: 'preparing'});
+        setResult(null);
+        setBenchmarkReport(null);
 
-      const instance = await KittenTTS.create(
-        {model, player: createRNSoundPlayer(Sound)},
-        (progress, info) => {
+        const config = await createBenchmarkTTSConfig(
+          model,
+          benchmarkConfig.bundledAssetsPath,
+        );
+        const createPromise = KittenTTS.create(config, (progress, info) => {
           if (mountedRef.current && info?.stage === 'downloading') {
             setState({
               kind: 'downloading',
               progress,
             });
           }
-        },
-      );
-
-      if (!mountedRef.current) {
-        if (!__DEV__) await instance.dispose();
-        return;
-      }
-
-      ttsRef.current = instance;
-      setTts(instance);
-      setState({kind: 'idle'});
-    } catch (error: unknown) {
-      ttsRef.current = null;
-      if (mountedRef.current) {
-        setTts(null);
-        setState({
-          kind: 'error',
-          message: getErrorMessage(error, 'Init failed'),
         });
+        const instance =
+          Platform.OS === 'web' && benchmarkConfig.autoStart
+            ? await withTimeout(
+                createPromise,
+                benchmarkConfig.modelTimeoutMs,
+                `Timed out preparing ${modelDisplayName(model)}`,
+              )
+            : await createPromise;
+
+        if (!mountedRef.current) {
+          if (!__DEV__) await instance.dispose();
+          return;
+        }
+
+        ttsRef.current = instance;
+        setTts(instance);
+        setState({kind: 'idle'});
+      } catch (error: unknown) {
+        ttsRef.current = null;
+        if (mountedRef.current) {
+          setTts(null);
+          setState({
+            kind: 'error',
+            message: getErrorMessage(error, 'Init failed'),
+          });
+        }
       }
-    }
-  }, []);
+    },
+    [
+      benchmarkConfig.autoStart,
+      benchmarkConfig.bundledAssetsPath,
+      benchmarkConfig.modelTimeoutMs,
+    ],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
+    if (Platform.OS === 'web' && benchmarkConfig.autoStart) {
+      return () => {
+        mountedRef.current = false;
+        ttsRef.current = null;
+      };
+    }
+
     initTTS(selectedModel);
     return () => {
       mountedRef.current = false;
@@ -266,7 +443,7 @@ export default function App() {
   const handleBenchmark = useCallback(async () => {
     const sampleText = inputText.trim();
 
-    if (!sampleText || !ttsRef.current) {
+    if (!sampleText) {
       return;
     }
 
@@ -276,7 +453,9 @@ export default function App() {
       setBenchmarkReport(null);
       setResult(null);
       const startedAt = new Date().toISOString();
-      const rows = MODELS.map(model =>
+      const benchmarkModels = benchmarkConfig.models;
+      const benchmarkWarmRuns = benchmarkConfig.warmRuns;
+      const rows = benchmarkModels.map(model =>
         makeFailedBenchmarkRow(
           model,
           `Benchmark ${modelDisplayName(model)}`,
@@ -286,7 +465,7 @@ export default function App() {
         ),
       );
       const publishReport = (finishedAt: string | null = null) => {
-        setBenchmarkReport({
+        const report = {
           schemaVersion: 1,
           sampleText,
           characterLength: Array.from(sampleText).length,
@@ -296,13 +475,15 @@ export default function App() {
           startedAt,
           finishedAt,
           rows: [...rows],
-        });
+        };
+        publishWebBenchmarkReport(report);
+        setBenchmarkReport(report);
       };
 
       publishReport();
 
-      for (let index = 0; index < MODELS.length; index += 1) {
-        const model = MODELS[index];
+      for (let index = 0; index < benchmarkModels.length; index += 1) {
+        const model = benchmarkModels[index];
         rows[index] = makeFailedBenchmarkRow(
           model,
           `Benchmark ${modelDisplayName(model)}`,
@@ -315,7 +496,7 @@ export default function App() {
           kind: 'benchmarking',
           model: modelDisplayName(model),
           completed: index,
-          total: MODELS.length,
+          total: benchmarkModels.length,
         });
 
         const existingInstance =
@@ -326,9 +507,11 @@ export default function App() {
           instance =
             existingInstance ??
             (await withTimeout(
-              KittenTTS.create(
-                {model, player: createRNSoundPlayer(Sound)},
-                (progress, info) => {
+              createBenchmarkTTSConfig(
+                model,
+                benchmarkConfig.bundledAssetsPath,
+              ).then(config =>
+                KittenTTS.create(config, (progress, info) => {
                   if (mountedRef.current && info?.stage === 'downloading') {
                     setState({
                       kind: 'benchmarking',
@@ -336,12 +519,12 @@ export default function App() {
                         progress * 100,
                       )}%`,
                       completed: index,
-                      total: MODELS.length,
+                      total: benchmarkModels.length,
                     });
                   }
-                },
+                }),
               ),
-              BENCHMARK_MODEL_TIMEOUT_MS,
+              benchmarkConfig.modelTimeoutMs,
               `Timed out preparing ${modelDisplayName(model)}`,
             ));
 
@@ -351,6 +534,7 @@ export default function App() {
             selectedVoice,
             selectedSpeed,
             `Timed out warming ${modelDisplayName(model)}`,
+            benchmarkConfig.modelTimeoutMs,
           );
 
           const measuredRuns: Array<{
@@ -358,14 +542,14 @@ export default function App() {
             generationMs: number;
           }> = [];
 
-          for (let run = 0; run < BENCHMARK_WARM_RUNS; run += 1) {
+          for (let run = 0; run < benchmarkWarmRuns; run += 1) {
             setState({
               kind: 'benchmarking',
               model: `${modelDisplayName(model)} run ${
                 run + 1
-              }/${BENCHMARK_WARM_RUNS}`,
+              }/${benchmarkWarmRuns}`,
               completed: index,
-              total: MODELS.length,
+              total: benchmarkModels.length,
             });
             measuredRuns.push(
               await measureGeneration(
@@ -375,7 +559,7 @@ export default function App() {
                 selectedSpeed,
                 `Timed out generating ${modelDisplayName(model)} warm run ${
                   run + 1
-                }/${BENCHMARK_WARM_RUNS}`,
+                }/${benchmarkWarmRuns}`,
               ),
             );
           }
@@ -399,7 +583,9 @@ export default function App() {
           const warmRtf = warmGenerationSeconds.map(seconds =>
             durationSeconds > 0 ? seconds / durationSeconds : 0,
           );
-          const wavBase64 = getWavBase64(res);
+          const wavBase64 = benchmarkConfig.includeAudio
+            ? getWavBase64(res)
+            : undefined;
 
           rows[index] = {
             model: String(model),
@@ -414,7 +600,7 @@ export default function App() {
               firstRun.result.duration > 0
                 ? firstGenerationSeconds / firstRun.result.duration
                 : 0,
-            warmRunCount: BENCHMARK_WARM_RUNS,
+            warmRunCount: benchmarkWarmRuns,
             warmGenerationMs: measuredRuns.map(run => run.generationMs),
             warmGenerationSeconds,
             warmRtf,
@@ -470,12 +656,27 @@ export default function App() {
       publishReport(new Date().toISOString());
       setState({kind: 'idle'});
     } catch (error: unknown) {
+      publishWebBenchmarkError(getErrorMessage(error, 'Benchmark failed'));
       setState({
         kind: 'error',
         message: getErrorMessage(error, 'Benchmark failed'),
       });
     }
-  }, [inputText, selectedModel, selectedSpeed, selectedVoice]);
+  }, [benchmarkConfig, inputText, selectedModel, selectedSpeed, selectedVoice]);
+
+  useEffect(() => {
+    if (
+      !benchmarkConfig.autoStart ||
+      autoBenchmarkStartedRef.current ||
+      isWorking ||
+      !inputText.trim()
+    ) {
+      return;
+    }
+
+    autoBenchmarkStartedRef.current = true;
+    handleBenchmark();
+  }, [benchmarkConfig.autoStart, handleBenchmark, inputText, isWorking]);
 
   const handleModelChange = useCallback(
     (model: KittenModel) => {
@@ -515,7 +716,7 @@ export default function App() {
         <View style={styles.section}>
           <Text style={styles.label}>Model</Text>
           <View style={styles.chipRow}>
-            {MODELS.map(model => (
+            {DEFAULT_BENCHMARK_MODELS.map(model => (
               <TouchableOpacity
                 key={model}
                 style={[
@@ -665,11 +866,12 @@ async function measureGeneration(
   voice: KittenVoice,
   speed: number,
   timeoutMessage: string,
+  timeoutMs = DEFAULT_BENCHMARK_MODEL_TIMEOUT_MS,
 ): Promise<{result: KittenTTSResult; generationMs: number}> {
   const generationStartedAt = Date.now();
   const result = await withTimeout(
     instance.generate(sampleText, voice, speed),
-    BENCHMARK_MODEL_TIMEOUT_MS,
+    timeoutMs,
     timeoutMessage,
   );
   return {
@@ -696,9 +898,7 @@ function StatusBanner({state}: {state: AppState}) {
           testID="status-banner"
           accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText} {...e2eTextProps('status-label')}>
             Preparing model...
           </Text>
         </View>
@@ -710,9 +910,7 @@ function StatusBanner({state}: {state: AppState}) {
           testID="status-banner"
           accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText} {...e2eTextProps('status-label')}>
             Downloading model... {Math.round(state.progress * 100)}%
           </Text>
         </View>
@@ -724,9 +922,7 @@ function StatusBanner({state}: {state: AppState}) {
           testID="status-banner"
           accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText} {...e2eTextProps('status-label')}>
             Generating speech...
           </Text>
         </View>
@@ -738,9 +934,7 @@ function StatusBanner({state}: {state: AppState}) {
           testID="status-banner"
           accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText} {...e2eTextProps('status-label')}>
             Benchmarking {state.model} ({state.completed + 1}/{state.total})...
           </Text>
         </View>
@@ -752,9 +946,7 @@ function StatusBanner({state}: {state: AppState}) {
           testID="status-banner"
           accessibilityLabel="status-banner">
           <ActivityIndicator size="small" color="#007AFF" />
-          <Text
-            style={styles.bannerText}
-            {...e2eTextProps('status-label')}>
+          <Text style={styles.bannerText} {...e2eTextProps('status-label')}>
             Playing...
           </Text>
         </View>

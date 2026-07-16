@@ -58,6 +58,8 @@ function numberFromEnv(name) {
 function main() {
   const logText = readLog();
   const device = process.env.TESTMU_DEVICE || "device";
+  const target = process.env.TESTMU_TARGET || "app";
+  const browserName = process.env.TESTMU_BROWSER_NAME || null;
   const platformName = process.env.TESTMU_PLATFORM_NAME || "Android";
   const startedAtMs = numberFromEnv("BENCHMARK_STARTED_AT_MS");
   const finishedAtMs = numberFromEnv("BENCHMARK_FINISHED_AT_MS") || Date.now();
@@ -74,6 +76,7 @@ function main() {
 
   const report = {
     schemaVersion: 1,
+    target,
     status: "failed",
     failedStage:
       process.env.BENCHMARK_FAILED_STAGE ||
@@ -84,6 +87,11 @@ function main() {
     device,
     platformName,
     platformVersion: process.env.TESTMU_PLATFORM_VERSION || null,
+    browserName,
+    browserVersion: process.env.TESTMU_BROWSER_VERSION || null,
+    requestedBrowserName: browserName,
+    webUrl: process.env.TESTMU_WEB_URL || null,
+    tunnelName: process.env.TESTMU_TUNNEL_NAME || null,
     realDevice: process.env.TESTMU_REAL_DEVICE !== "false",
     sessionId: null,
     githubRunId: process.env.GITHUB_RUN_ID || null,
@@ -98,8 +106,12 @@ function main() {
   };
 
   fs.mkdirSync(path.join(process.cwd(), "reports"), { recursive: true });
+  const filePrefix =
+    target === "web"
+      ? `web-${slugify(device)}-${slugify(browserName || "browser")}`
+      : slugify(device);
   fs.writeFileSync(
-    path.join(process.cwd(), "reports", `${slugify(device)}.json`),
+    path.join(process.cwd(), "reports", `${filePrefix}.json`),
     `${JSON.stringify(report, null, 2)}\n`
   );
 }

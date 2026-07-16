@@ -35,6 +35,7 @@ jobs:
 
   ios-unsigned-package:
     name: Benchmark app iOS unsigned IPA
+    if: false
     runs-on: macos-latest
     needs: sdk
     outputs:
@@ -201,6 +202,7 @@ jobs:
 
   testmu-ios-benchmark:
     name: TestMu iOS benchmark (${{ matrix.device }})
+    if: false
     runs-on: ubuntu-latest
     needs: ios-unsigned-package
     strategy:
@@ -227,6 +229,8 @@ jobs:
         working-directory: e2e/appium
 
       - name: Run TestMu iOS benchmark with unsigned IPA
+        id: run-ios-benchmark
+        continue-on-error: true
         timeout-minutes: 40
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
@@ -243,8 +247,38 @@ jobs:
           TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
         run: |
           mkdir -p reports
+          started_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          echo "started_at_ms=$started_at_ms" >> "$GITHUB_OUTPUT"
+          set +e
           set -o pipefail
-          npm run test:ios 2>&1 | tee reports/appium-output.log
+          timeout 35m npm run test:ios 2>&1 | tee reports/appium-output.log
+          status="${PIPESTATUS[0]}"
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "$started_at_ms" "$finished_at_ms")"
+          if [ "$status" -eq 124 ]; then
+            echo "Timed out after 35 minutes while waiting for the TestMu/Appium iOS benchmark to finish." | tee -a reports/appium-output.log
+          fi
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        working-directory: e2e/appium
+
+      - name: Write iOS device failure report
+        if: steps.run-ios-benchmark.outcome == 'failure'
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: iOS
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_REAL_DEVICE: true
+          TESTMU_SAMPLE_TEXT: ${{ vars.TESTMU_SAMPLE_TEXT || env.DEFAULT_TESTMU_SAMPLE_TEXT }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-ios-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.run-ios-benchmark.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-ios-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-ios-benchmark.outputs.total_runtime_seconds }}
+        run: |
+          node scripts/write-failure-report.js
         working-directory: e2e/appium
 
       - name: Upload unsigned iOS benchmark report
@@ -255,8 +289,80 @@ jobs:
           path: e2e/appium/reports/*
           if-no-files-found: warn
 
+      - name: Fail iOS device job if benchmark failed
+        if: steps.run-ios-benchmark.outcome == 'failure'
+        run: |
+          echo "The ${{ matrix.device }} iOS benchmark failed. Uploaded the failure report artifact above."
+          exit 1
+
+  web-example:
+    name: Benchmark app web build
+    runs-on: ubuntu-latest
+    needs: sdk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            benchmark/app/package-lock.json
+
+      - id: sdk-pack
+        name: Build SDK package tarball
+        run: |
+          npm ci
+          npm run build:ts
+          mkdir -p "$RUNNER_TEMP/kittentts-pack"
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP/kittentts-pack"
+          tarball="$(ls "$RUNNER_TEMP"/kittentts-pack/kittentts-react-native-*.tgz | head -n 1)"
+          if [ ! -f "$tarball" ]; then
+            echo "SDK tarball was not created."
+            exit 1
+          fi
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "Packed SDK tarball: $tarball"
+
+      - name: Install benchmark app dependencies from SDK tarball
+        run: |
+          npm ci
+          npm install --no-save --package-lock=false "${{ steps.sdk-pack.outputs.tarball }}"
+          node - <<'NODE'
+          const rootPackage = require('../../package.json');
+          const installedPackage = require('./node_modules/@kittentts/react-native/package.json');
+          if (installedPackage.version !== rootPackage.version) {
+            throw new Error(
+              `Expected local SDK ${rootPackage.version}, found ${installedPackage.version}`,
+            );
+          }
+          console.log(`Using local SDK tarball version ${installedPackage.version}`);
+          NODE
+        working-directory: benchmark/app
+
+      - name: Bundle web benchmark model assets
+        run: |
+          rm -rf public/kittentts
+          npx --no-install kittentts-react-native bundle-assets \
+            --all \
+            --out public/kittentts
+        working-directory: benchmark/app
+
+      - name: Build web benchmark app
+        run: npm run build:web
+        working-directory: benchmark/app
+
+      - name: Upload web benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-rn-web-dist
+          path: benchmark/app/dist
+
   android-example:
     name: Benchmark app Android release APK
+    if: false
     runs-on: ubuntu-latest
     needs: testmu-ios-benchmark
 
@@ -316,6 +422,7 @@ jobs:
 
   upload-testmu-app:
     name: Upload APK to TestMu
+    if: false
     runs-on: ubuntu-latest
     needs: android-example
     outputs:
@@ -412,9 +519,9 @@ jobs:
 
   testmu-android-benchmark:
     name: TestMu Android benchmark (${{ matrix.device }})
+    if: false
     runs-on: ubuntu-latest
     needs: upload-testmu-app
-    if: needs.upload-testmu-app.outputs.enabled == 'true'
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -505,14 +612,267 @@ jobs:
           path: e2e/appium/reports/*.json
           if-no-files-found: warn
 
+      - name: Fail device job if benchmark failed
+        if: steps.run-benchmark.outcome == 'failure'
+        run: |
+          echo "The ${{ matrix.device }} benchmark failed. Uploaded the failure report artifact above."
+          exit 1
+
+  testmu-web-browser-benchmark:
+    name: TestMu web benchmark (${{ matrix.device }} / ${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 48
+    needs:
+      - web-example
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - slug: pixel-8-chrome-benchmark
+            device: Pixel 8
+            platform: Android
+            version: "14"
+            browser: Chrome
+            browser_version: ""
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
+            real_device: "true"
+            wdio_script: test:web:browser
+          - slug: ipad-10-9-2022-safari-benchmark
+            device: iPad 10.9 (2022)
+            platform: iOS
+            version: "18"
+            browser: Safari
+            browser_version: ""
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
+            real_device: "true"
+            wdio_script: test:web:browser
+          - slug: linux-chrome-desktop-benchmark
+            device: Linux Desktop
+            platform: Linux
+            version: ""
+            browser: Chrome
+            browser_version: latest
+            models: kitten-tts-nano-0.8-int8,kitten-tts-nano-0.8,kitten-tts-micro-0.8,kitten-tts-mini-0.8
+            sample_text: KittenTTS web benchmark.
+            sample_text_query: KittenTTS%20web%20benchmark.
+            real_device: "false"
+            wdio_script: test:web:desktop
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            benchmark/app/package-lock.json
+            e2e/appium/package-lock.json
+
+      - name: Install benchmark web server dependencies
+        run: npm ci
+        working-directory: benchmark/app
+
+      - name: Install Appium harness
+        run: npm ci
+        working-directory: e2e/appium
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: benchmark-rn-web-dist
+          path: benchmark/app/dist
+
+      - id: benchmark-clock
+        name: Mark browser benchmark start
+        run: echo "started_at_ms=$(node -e 'process.stdout.write(String(Date.now()))')" >> "$GITHUB_OUTPUT"
+
+      - id: preview
+        name: Start web benchmark preview
+        continue-on-error: true
+        run: |
+          mkdir -p reports
+          runner_host="$(hostname -I | awk '{print $1}')"
+          echo "host=$runner_host" >> "$GITHUB_OUTPUT"
+          npm run preview:web > reports/web-preview.log 2>&1 &
+          echo "$!" > reports/web-preview.pid
+          for attempt in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:4173" >/dev/null; then
+              echo "Web benchmark preview is ready."
+              echo "Web benchmark private URL: http://$runner_host:4173"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Web benchmark preview did not become ready." | tee -a reports/web-preview.log
+          exit 1
+        working-directory: benchmark/app
+
+      - id: tunnel
+        name: Start LambdaTest Tunnel
+        if: steps.preview.outcome == 'success'
+        continue-on-error: true
+        uses: LambdaTest/LambdaTest-tunnel-action@v2
+        with:
+          user: ${{ secrets.LT_USERNAME }}
+          accessKey: ${{ secrets.LT_ACCESS_KEY }}
+          tunnelName: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
+
+      - name: Copy web preview log into Appium reports
+        if: always()
+        run: |
+          mkdir -p e2e/appium/reports
+          if [ -f benchmark/app/reports/web-preview.log ]; then
+            cp benchmark/app/reports/web-preview.log e2e/appium/reports/web-preview.log
+          fi
+
+      - name: Run TestMu real browser benchmark
+        id: run-web-benchmark
+        if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 42
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
+          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_BROWSER_NAME: ${{ matrix.browser }}
+          TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
+          TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
+          TESTMU_WDIO_SCRIPT: ${{ matrix.wdio_script }}
+          TESTMU_BENCHMARK_REPORT_TIMEOUT_MS: 1800000
+          TESTMU_EXPECTED_MODELS: ${{ matrix.models }}
+          TESTMU_EXPECTED_WARM_RUNS: "1"
+          TESTMU_REQUIRE_WER_AUDIO: true
+          TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
+        run: |
+          mkdir -p reports
+          set +e
+          setsid bash -lc 'npm run "${TESTMU_WDIO_SCRIPT}"' > reports/appium-output.log 2>&1 &
+          appium_pid="$!"
+          deadline=$((SECONDS + 2400))
+          status=0
+          while kill -0 "$appium_pid" 2>/dev/null; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              status=124
+              echo "Timed out after 40 minutes while waiting for the TestMu/Appium mobile browser benchmark to finish." >> reports/appium-output.log
+              kill -TERM "-$appium_pid" 2>/dev/null || kill -TERM "$appium_pid" 2>/dev/null || true
+              sleep 5
+              kill -KILL "-$appium_pid" 2>/dev/null || kill -KILL "$appium_pid" 2>/dev/null || true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$status" -eq 0 ]; then
+            wait "$appium_pid"
+            status="$?"
+          else
+            wait "$appium_pid" >/dev/null 2>&1 || true
+          fi
+          tail -240 reports/appium-output.log || true
+          finished_at_ms="$(node -e 'process.stdout.write(String(Date.now()))')"
+          total_runtime_seconds="$(node -e "process.stdout.write(((Number(process.argv[2]) - Number(process.argv[1])) / 1000).toFixed(3))" "${{ steps.benchmark-clock.outputs.started_at_ms }}" "$finished_at_ms")"
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          echo "finished_at_ms=$finished_at_ms" >> "$GITHUB_OUTPUT"
+          echo "total_runtime_seconds=$total_runtime_seconds" >> "$GITHUB_OUTPUT"
+          exit "$status"
+        working-directory: e2e/appium
+
+      - name: Write web benchmark failure report
+        if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
+        env:
+          TESTMU_TARGET: web
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
+          TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
+          TESTMU_BROWSER_NAME: ${{ matrix.browser }}
+          TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
+          TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
+          TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
+          TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
+          GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BENCHMARK_EXIT_CODE: ${{ steps.run-web-benchmark.outputs.exit_code }}
+          BENCHMARK_STARTED_AT_MS: ${{ steps.benchmark-clock.outputs.started_at_ms }}
+          BENCHMARK_FINISHED_AT_MS: ${{ steps.run-web-benchmark.outputs.finished_at_ms }}
+          BENCHMARK_TOTAL_RUNTIME_SECONDS: ${{ steps.run-web-benchmark.outputs.total_runtime_seconds }}
+          PREVIEW_OUTCOME: ${{ steps.preview.outcome }}
+          TUNNEL_OUTCOME: ${{ steps.tunnel.outcome }}
+          RUN_OUTCOME: ${{ steps.run-web-benchmark.outcome }}
+        run: |
+          stage="Run TestMu web benchmark"
+          if [ "$PREVIEW_OUTCOME" = "failure" ]; then
+            stage="Start web benchmark preview"
+            cat reports/web-preview.log >> reports/appium-output.log 2>/dev/null || true
+          elif [ "$TUNNEL_OUTCOME" = "failure" ]; then
+            stage="Start LambdaTest Tunnel"
+            echo "LambdaTest Tunnel failed before the Appium browser session started." >> reports/appium-output.log
+          fi
+          BENCHMARK_FAILED_STAGE="$stage" node scripts/write-failure-report.js
+        working-directory: e2e/appium
+
+      - name: Upload web benchmark report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testmu-benchmark-web-${{ matrix.slug }}
+          path: e2e/appium/reports/*
+          if-no-files-found: warn
+
+      - name: Fail web benchmark job if benchmark failed
+        if: steps.preview.outcome == 'failure' || steps.tunnel.outcome == 'failure' || steps.run-web-benchmark.outcome == 'failure'
+        run: |
+          echo "The ${{ matrix.device }} / ${{ matrix.browser }} web benchmark failed. Uploaded the failure report artifact above."
+          exit 1
+
+      - name: Fail web benchmark job if model rows failed
+        if: steps.preview.outcome == 'success' && steps.tunnel.outcome == 'success' && steps.run-web-benchmark.outcome == 'success'
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const reportsDir = path.resolve('e2e/appium/reports');
+          const jsonFiles = fs.existsSync(reportsDir)
+            ? fs.readdirSync(reportsDir).filter((file) => file.endsWith('.json'))
+            : [];
+          if (jsonFiles.length === 0) {
+            throw new Error('No web benchmark JSON report was uploaded by the device job.');
+          }
+          const failures = [];
+          for (const file of jsonFiles) {
+            const report = JSON.parse(fs.readFileSync(path.join(reportsDir, file), 'utf8'));
+            if (report.status === 'failed' || report.status === 'partial') {
+              failures.push(`${report.device || file}: ${report.errorSummary || report.failedStage || report.status}`);
+            }
+            for (const row of report.rows || []) {
+              if (row.status === 'failed') {
+                failures.push(`${report.device || file}: ${row.modelDisplayName || row.model}: ${row.errorSummary || row.failedStage || 'failed'}`);
+              }
+            }
+          }
+          if (failures.length > 0) {
+            console.error('Web benchmark model failures:');
+            for (const failure of failures) {
+              console.error(`- ${failure}`);
+            }
+            process.exit(1);
+          }
+          console.log('No web benchmark model failures found.');
+          NODE
+
   testmu-benchmark-report:
     name: TestMu benchmark report
     runs-on: ubuntu-latest
     needs:
-      - testmu-ios-benchmark
-      - upload-testmu-app
-      - testmu-android-benchmark
-    if: always() && needs.upload-testmu-app.outputs.enabled == 'true'
+      - testmu-web-browser-benchmark
+    if: always()
 
     steps:
       - uses: actions/checkout@v4

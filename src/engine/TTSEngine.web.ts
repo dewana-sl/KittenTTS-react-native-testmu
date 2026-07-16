@@ -395,9 +395,8 @@ async function configureOnnxRuntime(
     return;
   }
 
-  ort.env.wasm.wasmPaths = {
-    wasm: `${defaultOrtWasmBaseURL()}ort-wasm-simd-threaded.wasm`,
-  };
+  ort.env.wasm.numThreads = supportsThreadedWasm() ? config.ortNumThreads : 1;
+  ort.env.wasm.wasmPaths = defaultOrtWasmBaseURL();
 }
 
 async function configureNodeOnnxRuntime(ort: OrtRuntime): Promise<void> {
@@ -436,4 +435,18 @@ function isBrowserRuntime(): boolean {
     typeof scope.window !== 'undefined' ||
     (typeof scope.self !== 'undefined' && typeof scope.process?.versions?.node === 'undefined')
   );
+}
+
+function supportsThreadedWasm(): boolean {
+  const scope = globalThis as {
+    crossOriginIsolated?: boolean;
+    SharedArrayBuffer?: unknown;
+    navigator?: { userAgent?: string };
+  };
+  const userAgent = scope.navigator?.userAgent ?? '';
+  const isSafari =
+    /\bSafari\//.test(userAgent) &&
+    !/\bChrome\/|\bChromium\/|\bCriOS\/|\bFxiOS\/|\bEdg\//.test(userAgent);
+
+  return Boolean(scope.crossOriginIsolated && scope.SharedArrayBuffer && !isSafari);
 }
