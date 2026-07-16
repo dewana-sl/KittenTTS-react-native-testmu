@@ -13,6 +13,8 @@ const BENCHMARK_REPORT_TIMEOUT_MS = Number(
 const APP_READY_TIMEOUT_MS = Number(
   process.env.TESTMU_APP_READY_TIMEOUT_MS || 6 * 60 * 1000
 );
+const ANDROID_APP_PACKAGE =
+  process.env.TESTMU_ANDROID_APP_PACKAGE || "com.basicexample";
 
 function slugify(value) {
   return String(value || "device")
@@ -57,6 +59,61 @@ function isIosSession() {
         getPlatformName()
     )
   );
+}
+
+function isAndroidSession() {
+  return /android/i.test(
+    String(
+      browser?.capabilities?.platformName ||
+        browser?.requestedCapabilities?.platformName ||
+        getPlatformName()
+    )
+  );
+}
+
+async function activateAndroidBenchmarkApp() {
+  if (!isAndroidSession() || typeof browser.activateApp !== "function") {
+    return;
+  }
+
+  try {
+    await browser.activateApp(ANDROID_APP_PACKAGE);
+  } catch (error) {
+    console.warn(
+      `[KittenTTS benchmark] Could not activate ${ANDROID_APP_PACKAGE}: ${error.message}`
+    );
+  }
+}
+
+async function dismissAndroidSystemDialog() {
+  if (!isAndroidSession()) {
+    return false;
+  }
+
+  const selectors = [
+    "id=android:id/button3",
+    "id=android:id/button1",
+    "id=android:id/button2",
+    'android=new UiSelector().textMatches("(?i)^(OK|Got it|Close|Dismiss)$")',
+  ];
+
+  for (const selector of selectors) {
+    try {
+      const element = await $(selector);
+      if (await element.isDisplayed()) {
+        const text = (await element.getText().catch(() => selector)) || selector;
+        console.log(`[KittenTTS benchmark] Dismissing Android dialog: ${text}`);
+        await element.click();
+        await browser.pause(1000);
+        await activateAndroidBenchmarkApp();
+        return true;
+      }
+    } catch {
+      // Most devices will not have a blocking system dialog. Keep polling.
+    }
+  }
+
+  return false;
 }
 
 function usableElementText(candidate, accessibilityId) {
@@ -441,7 +498,13 @@ async function waitForAppReady(timeoutMs) {
   const startedAt = Date.now();
   let lastStatus = "No app status captured yet.";
 
+  await activateAndroidBenchmarkApp();
+
   while (Date.now() - startedAt < timeoutMs) {
+    if (await dismissAndroidSystemDialog()) {
+      continue;
+    }
+
     const errorMessage = await getOptionalText("error-message");
     if (errorMessage) {
       throw new Error(`App showed error-banner before benchmark: ${errorMessage}`);
