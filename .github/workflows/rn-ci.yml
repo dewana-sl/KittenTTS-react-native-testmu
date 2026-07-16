@@ -738,7 +738,7 @@ jobs:
         env:
           LT_USERNAME: ${{ secrets.LT_USERNAME }}
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
-          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_PLATFORM_NAME: ${{ matrix.platform }}
@@ -794,7 +794,7 @@ jobs:
           TESTMU_PLATFORM_VERSION: ${{ matrix.version }}
           TESTMU_BROWSER_NAME: ${{ matrix.browser }}
           TESTMU_BROWSER_VERSION: ${{ matrix.browser_version }}
-          TESTMU_WEB_URL: "http://${{ steps.preview.outputs.host }}:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
+          TESTMU_WEB_URL: "http://localhost.lambdatest.com:4173?benchmarkModels=${{ matrix.models }}&benchmarkWarmRuns=1&benchmarkText=${{ matrix.sample_text_query }}&benchmarkIncludeAudio=true&benchmarkModelTimeoutMs=300000&benchmarkBundledAssetsPath=/kittentts&benchmarkAutoStart=true"
           TESTMU_TUNNEL_NAME: kittentts-web-${{ github.run_id }}-${{ matrix.slug }}
           TESTMU_REAL_DEVICE: ${{ matrix.real_device }}
           TESTMU_SAMPLE_TEXT: ${{ matrix.sample_text }}
