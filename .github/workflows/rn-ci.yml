@@ -619,6 +619,7 @@ jobs:
     timeout-minutes: 48
     needs:
       - web-example
+      - testmu-android-benchmark
     strategy:
       fail-fast: false
       max-parallel: 1
