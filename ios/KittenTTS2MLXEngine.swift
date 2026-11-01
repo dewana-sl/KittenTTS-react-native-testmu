@@ -1,6 +1,7 @@
-// The MLX language model behind the React Native module (KittenTTS2MLXModule.mm).
-// One generation runs at a time on its own queue, token loop and sampling
-// included, so nothing crosses to JavaScript per token.
+// Kitten TTS 2 on the GPU behind the React Native module (KittenTTS2MLXModule.m):
+// the language model (KittenTTS2LanguageModel.swift) and the audio decoder
+// (KittenTTS2AudioDecoder.swift). Work runs one call at a time on its own queue,
+// token loop and sampling included, so nothing crosses to JavaScript per token.
 
 import Foundation
 import Metal
@@ -12,6 +13,7 @@ public final class KittenTTS2MLXEngine: NSObject {
 
     private let queue = DispatchQueue(label: "dev.kittenml.kittentts2.mlx", qos: .userInitiated)
     private var model: KittenLanguageModel?
+    private var decoder: KittenAudioDecoder?
     private let lock = NSLock()
     private var cancelled = false
 
@@ -35,9 +37,53 @@ public final class KittenTTS2MLXEngine: NSObject {
                 self.model = nil
                 self.model = try KittenLanguageModel(
                     url: URL(fileURLWithPath: path), config: try Self.config(config))
+                Memory.clearCache()
                 completion(nil)
             } catch {
                 completion(Self.error(error))
+            }
+        }
+    }
+
+    @objc public func loadDecoder(path: String, completion: @escaping (NSError?) -> Void) {
+        queue.async {
+            do {
+                self.decoder = nil
+                self.decoder = try KittenAudioDecoder(url: URL(fileURLWithPath: path))
+                completion(nil)
+            } catch {
+                completion(Self.error(error))
+            }
+        }
+    }
+
+    /// Codec tokens to 24 kHz float32 samples, returned as base64 bytes: a few
+    /// megabytes cross the bridge as one string much faster than as numbers.
+    @objc public func decode(
+        tokens: [NSNumber], promptToken: [NSNumber], promptFeat: String, embedding: [NSNumber],
+        seed: UInt32, completion: @escaping (String?, NSError?) -> Void
+    ) {
+        queue.async {
+            do {
+                guard let decoder = self.decoder else {
+                    throw NSError(domain: "KittenTTS2MLX", code: 1,
+                                  userInfo: [NSLocalizedDescriptionKey: "The MLX decoder is not loaded."])
+                }
+                guard let featData = Data(base64Encoded: promptFeat), featData.count % (4 * 80) == 0 else {
+                    throw NSError(domain: "KittenTTS2MLX", code: 3,
+                                  userInfo: [NSLocalizedDescriptionKey: "promptFeat is not float32 mel frames."])
+                }
+                let feat = featData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+                let audio = try decoder.decode(
+                    tokens: tokens.map(\.intValue), promptToken: promptToken.map(\.intValue),
+                    promptFeat: MLXArray(feat, [feat.count / 80, 80]),
+                    embedding: embedding.map(\.floatValue), seed: UInt64(seed))
+                let samples = audio.asArray(Float.self)
+                Memory.clearCache()
+                let bytes = samples.withUnsafeBufferPointer { Data(buffer: $0) }
+                completion(bytes.base64EncodedString(), nil)
+            } catch {
+                completion(nil, Self.error(error))
             }
         }
     }
@@ -57,6 +103,7 @@ public final class KittenTTS2MLXEngine: NSObject {
                 let tokens = try self.run(
                     model, prompt: prompt.map(\.intValue), speaker: speaker.map(\.floatValue),
                     settings: settings, maxNewTokens: maxNewTokens, seed: seed)
+                Memory.clearCache()
                 completion(tokens.map { NSNumber(value: $0) }, nil)
             } catch {
                 completion(nil, Self.error(error))
@@ -73,6 +120,7 @@ public final class KittenTTS2MLXEngine: NSObject {
         setCancelled(true)
         queue.async {
             self.model = nil
+            self.decoder = nil
             Memory.clearCache()
             completion()
         }

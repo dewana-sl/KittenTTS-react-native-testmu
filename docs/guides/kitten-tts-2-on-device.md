@@ -6,12 +6,12 @@ the way `KittenTTS("KittenML/kitten-tts-2")` runs it in the Python package: same
 voices, same prompt, same text normalization and the same sampling pipeline.
 Nothing leaves the device once the model is downloaded.
 
-It is a large model for a phone: a 1.5 to 2 GB download, and 2 to 2.5 GB of
-memory while it is loaded. On an iPhone 17 it generates speech about as fast as
-it plays when the language model runs on the GPU through
-[MLX](#run-the-language-model-on-the-gpu-mlx), and about 1.8 times slower on the
-CPU, which is what Android and apps without MLX use. Play long text with
-`generateStreaming()`. For voice cloning, or when the download is too big, use
+It is a large model for a phone: a 1.25 to 2 GB download, and 2 to 2.7 GB of
+memory while it is loaded. On an iPhone 17 it generates speech faster than it
+plays when it runs on the GPU through [MLX](#run-it-on-the-gpu-mlx), and about
+1.8 times slower than it plays on the CPU, which is what Android and apps
+without MLX use. Play long text with `generateStreaming()`. For voice cloning,
+or when the download is too big, use
 [Kitten TTS 2 through the Kitten API](kitten-api.md) instead.
 
 ## Quick Start
@@ -53,6 +53,7 @@ downloads the files it lists:
 | `lm-ternary.safetensors` | 954 MB | The same model as MLX reads it: the published packed checkpoint |
 | `flow.onnx` | 482 MB | Codec tokens to mel spectrogram (s3gen's flow) |
 | `hift.onnx` | 83 MB | Mel spectrogram to 24 kHz audio (s3gen's HiFT vocoder) |
+| `decoder-mlx.safetensors` | 271 MB | The flow's and vocoder's weights as MLX reads them, in float16 |
 | `voices.bin` | 19 MB | The built-in voices, precomputed |
 | tokenizer and grammars | 5 MB | Qwen's tokenizer, kitten-text-processing's English grammars |
 
@@ -67,8 +68,8 @@ const tts = await KittenTTS.create({
 });
 ```
 
-A device downloads one copy of the language model, for the backend it uses:
-1.54 GB in all with MLX, 2.02 GB with ONNX Runtime. Files already on the device,
+A device downloads one copy of each model, for the backend it uses: 1.25 GB in
+all with MLX, 2.02 GB with ONNX Runtime. Files already on the device,
 at the size and SHA-256 the manifest lists, are not downloaded again, and an
 interrupted download resumes at the next file. `forceRedownload: true` deletes
 them first. They live under
@@ -143,14 +144,22 @@ for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
 `generate()` waits for every chunk and joins them with short pauses, trimming
 each chunk's edge silence, as the Python package does.
 
-## Run The Language Model On The GPU (MLX)
+## Run It On The GPU (MLX)
 
-On iOS the language model can run on the GPU through
+On iOS, Kitten TTS 2 can run on the GPU through
 [MLX](https://github.com/ml-explore/mlx-swift), as the Python package's
-`backend="mlx"` runs it on a Mac: the same ternary weights unpacked into MLX's
-4-bit format without rounding, bfloat16 activations, and the token loop and the
-sampler in Swift. The audio decoder stays on ONNX Runtime. MLX needs iOS 17 or
-later and a real device; the iOS simulator lacks the GPU features it uses.
+`backend="mlx"` runs its language model on a Mac:
+
+- The language model: the same ternary weights unpacked into MLX's 4-bit format
+  without rounding, bfloat16 activations, and the token loop and the sampler in
+  Swift, so nothing crosses to JavaScript per token.
+- The audio decoder: s3gen's flow and HiFT vocoder ported to MLX, in float32.
+  Against the Python package's decoder with the same noise, the mel is within
+  0.026 and the waveform within 0.004.
+
+MLX needs iOS 17 or later and a real device; the iOS simulator lacks the GPU
+features it uses. `create()` runs one short generation before it returns, so
+the GPU kernels compile there and not in your first call.
 
 It is built into the app only when you ask, since it raises the minimum iOS
 version. With Expo, turn it on in the config plugin and rebuild:
@@ -200,9 +209,12 @@ faster than the audio plays:
 
 | iPhone 17 | Real-time factor | Words right (8 sentences) | Speaker similarity | Memory |
 | --- | --- | --- | --- | --- |
-| `backend: 'mlx'` | 1.00 | all | 0.762 | 2.35 GB |
+| `backend: 'mlx'` | 0.55 to 0.79 | all | 0.752 | 2.1 to 2.7 GB |
 | `backend: 'onnx'`, `'int8'`, 4 threads | 1.80 | all | 0.761 | 1.8 GB |
 | `backend: 'onnx'`, `'float32'` | 5.3 (one sentence) | | | |
+
+The MLX range is three runs of the same 8 sentences; the phone was slower the
+warmer it got.
 
 On an M5 Pro Mac with 4 threads:
 
@@ -214,20 +226,21 @@ On an M5 Pro Mac with 4 threads:
 | The Python package, MLX on the GPU | 0.27 | | |
 
 Speaker similarity is the cosine between each clip's speaker embedding and the
-voice's reference, as the Python package measures its backends. On the iPhone,
-loading the model from the device took 8.3 s with MLX and 7.4 s without.
-Streaming a 29-second text delivered its first 18 seconds of audio after 20 s
-with MLX and after 31 s without. With MLX, most of the remaining time is the
-audio decoder on the CPU.
+voice's reference, as the Python package measures its backends; the Python
+package itself scores 0.763 on these sentences. On the iPhone, loading the
+model from the device took 5.8 s with MLX (warm-up included) and 7.4 s without.
+Streaming a 29-second text delivered its first 18 seconds of audio after 13 s
+with MLX and after 31 s without.
 
 `ortNumThreads` sets the thread count. The default, 4, was the fastest on the
 iPhone 17: 2 threads gave a real-time factor of 2.2, and 6 gave 3.0, because the
 extra threads land on the slower efficiency cores.
 
 The memory column is the app's footprint while generating on the iPhone 17,
-which has 8 GB of RAM (2.6 GB at the peak seen with MLX). On iOS, add the
-`com.apple.developer.kernel.increased-memory-limit` entitlement so the system
-does not stop the app. 6 GB phones may not have room.
+which has 8 GB of RAM. With MLX the system sent the app low-memory warnings
+during long chunks, so add the
+`com.apple.developer.kernel.increased-memory-limit` entitlement to keep it from
+being stopped. 6 GB phones may not have room.
 
 ## Not On The Device Yet
 
@@ -235,8 +248,7 @@ does not stop the app. 6 GB phones may not have room.
   encoders and a transcription model on the device. Clone through the Kitten API.
 - Browsers: `create()` throws there; use the Kitten API.
 - The smaller `student_w4` decoder.
-- The audio decoder on the GPU, and the GPU on Android: ONNX Runtime's mobile
-  builds run them on the CPU.
+- The GPU on Android: ONNX Runtime's mobile builds run both models on the CPU.
 
 ## Compared With The Python Package
 

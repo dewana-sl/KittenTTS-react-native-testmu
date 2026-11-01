@@ -13,12 +13,13 @@
   `'float32'`; an iPhone 17 takes about 1.8 seconds per second of speech.
   `tools/kitten-tts-2-onnx` builds the files from the model repository. Voice
   cloning on the device and browsers are not supported yet.
-- Added an MLX backend for Kitten TTS 2 on iOS 17+: the language model on the
-  GPU, as the Python package's `backend="mlx"`, through mlx-swift in the SDK's
-  new iOS pod. It is opt-in (`{ "mlx": true }` in the Expo plugin, or
-  `KITTENTTS_MLX=1 pod install`); `backend: 'auto'` uses it when it is built in.
-  An iPhone 17 then generates about as fast as it speaks, and downloads 1.54 GB
-  instead of 2.02 GB.
+- Added an MLX backend for Kitten TTS 2 on iOS 17+: the language model and
+  s3gen's audio decoder on the GPU, as the Python package's `backend="mlx"`,
+  through mlx-swift in the SDK's new iOS pod. It is opt-in (`{ "mlx": true }` in
+  the Expo plugin, or `KITTENTTS_MLX=1 pod install`); `backend: 'auto'` uses it
+  when it is built in. An iPhone 17 then generates faster than it speaks (a
+  real-time factor of 0.55 to 0.79, against 1.8 on the CPU) and downloads
+  1.25 GB instead of 2.02 GB.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,

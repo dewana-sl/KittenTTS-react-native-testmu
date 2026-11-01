@@ -383,6 +383,18 @@ test('the language model honours maxNewTokens and cancellation', async () => {
     error => error.code === 'CANCELLED');
 });
 
+test('decoder input and the fade are shared by both backends', () => {
+  const { applyTrimFade, decoderTokens } = require('../lib/kittentts2/AudioDecoder');
+  assert.deepEqual(decoderTokens([5, -1, 6561, 6], 4299), [5, 6, 4299, 4299, 4299]);
+  assert.equal(decoderTokens([99999], 4299), null);
+  const wav = applyTrimFade(new Float32Array(1200).fill(1));
+  assert.equal(wav[0], 0);
+  assert.equal(wav[479], 0);
+  assert.equal(wav[480], 0);
+  assert.ok(Math.abs(wav[959] - 1) < 1e-6);
+  assert.equal(wav[1199], 1);
+});
+
 test('the decoder pads with silence, drops invalid codes and fades in', async () => {
   const calls = [];
   const sessions = fakeDecoderSessions(calls);
@@ -442,9 +454,10 @@ test('precision picks the language model graph', async () => {
   await assert.rejects(createTTS({ precision: 'float16' }), error => error.code === 'INVALID_ARGUMENT');
 });
 
-test('an MLX language model takes the place of the ONNX graph', async () => {
+test('MLX models take the place of every ONNX graph', async () => {
   const opened = [];
   const calls = [];
+  const decoded = [];
   const generator = {
     async generate(prompt, speaker, settings, maxNewTokens) {
       calls.push({ prompt, speaker: [...speaker], settings, maxNewTokens });
@@ -452,14 +465,22 @@ test('an MLX language model takes the place of the ONNX graph', async () => {
     },
     async release() {},
   };
+  const decoder = {
+    async decode(codes, conditioning) {
+      decoded.push({ codes, frames: conditioning.promptFeat.length / 80 });
+      return new Float32Array(2400).fill(0.1);
+    },
+    async release() {},
+  };
   let tokens;
-  const tts = await createTTS({ opened, mlx: async t => { tokens = t; return generator; } });
+  const tts = await createTTS({ opened, mlx: async t => { tokens = t; return { languageModel: generator, decoder }; } });
   assert.equal(tts.backend, 'mlx');
   assert.equal(tts.precision, 'bfloat16');
-  assert.ok(!opened.some(model => model.startsWith('lm')), `opened ${opened}`);
+  assert.deepEqual(opened, [], `opened ${opened}`);
   assert.deepEqual(tokens, { speechEnd: TOKENS.speech_end_id, stop: TOKENS.stop_id, audioStart: AUDIO, audioEnd: AUDIO + 6561 });
   const result = await tts.generate('he', { voice: 'Luna', temperature: 0.7 });
-  assert.ok(result.samples.length > 0);
+  assert.equal(result.samples.length, 2400);
+  assert.deepEqual(decoded, [{ codes: [4, 5, 6], frames: 4 }]);
   assert.equal(calls[0].settings.temperature, 0.7);
   assert.deepEqual(calls[0].speaker, [2, 2, 2, 2]);
   assert.deepEqual(calls[0].prompt.slice(-1), [TOKENS.speech_start_id]);

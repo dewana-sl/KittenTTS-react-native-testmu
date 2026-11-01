@@ -1,5 +1,6 @@
-// React Native's view of KittenTTS2MLXEngine: Kitten TTS 2's language model on
-// the GPU. Built only when the app turns MLX on (see KittenTTSReactNative.podspec).
+// React Native's view of KittenTTS2MLXEngine: Kitten TTS 2's language model and
+// audio decoder on the GPU. Built only when the app turns MLX on (see
+// KittenTTSReactNative.podspec).
 
 #import <React/RCTBridgeModule.h>
 
@@ -58,6 +59,41 @@ RCT_EXPORT_METHOD(generate:(NSArray<NSNumber *> *)prompt
       reject(error.code == 2 ? @"CANCELLED" : @"MLX_GENERATE_FAILED", error.localizedDescription, error);
     } else {
       resolve(tokens);
+    }
+  }];
+}
+
+RCT_EXPORT_METHOD(loadDecoder:(NSString *)path
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  [KittenTTS2MLXEngine.shared loadDecoderWithPath:path completion:^(NSError *error) {
+    if (error) {
+      reject(@"MLX_LOAD_FAILED", error.localizedDescription, error);
+    } else {
+      resolve(nil);
+    }
+  }];
+}
+
+RCT_EXPORT_METHOD(decode:(NSArray<NSNumber *> *)tokens
+                  promptToken:(NSArray<NSNumber *> *)promptToken
+                  promptFeat:(NSString *)promptFeat
+                  embedding:(NSArray<NSNumber *> *)embedding
+                  seed:(double)seed
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  [KittenTTS2MLXEngine.shared decodeWithTokens:tokens
+                                   promptToken:promptToken
+                                    promptFeat:promptFeat
+                                     embedding:embedding
+                                          seed:(uint32_t)seed
+                                    completion:^(NSString *samples, NSError *error) {
+    if (error) {
+      reject(@"MLX_DECODE_FAILED", error.localizedDescription, error);
+    } else {
+      resolve(samples);
     }
   }];
 }

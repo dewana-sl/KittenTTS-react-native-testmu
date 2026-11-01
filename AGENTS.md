@@ -55,9 +55,11 @@ Main flow:
 - `ios/` and `KittenTTSReactNative.podspec`: the opt-in MLX backend for Kitten
   TTS 2's language model. `KittenTTS2LanguageModel.swift` ports the Python
   package's `mlx/model.py` and `loader.py`, `KittenTTS2Sampler.swift` ports
-  `sampling.ts`, `KittenTTS2MLXEngine.swift` runs the token loop on its own
-  queue, and `KittenTTS2MLXModule.m` exposes it to JS as `KittenTTS2MLX`
-  (used by `src/kittentts2/MLXLanguageModel.ts`). The podspec has no sources
+  `sampling.ts`, `KittenTTS2AudioDecoder.swift` ports s3gen's flow and HiFT
+  vocoder (weights from `tools/kitten-tts-2-onnx/decoder_mlx.py`, float16 at
+  rest, evaluated layer by layer to bound memory), `KittenTTS2MLXEngine.swift`
+  runs both on its own queue, and `KittenTTS2MLXModule.m` exposes it to JS as
+  `KittenTTS2MLX` (used by `src/kittentts2/MLXLanguageModel.ts`). The podspec has no sources
   unless `KITTENTTS_MLX=1` or `"kittentts.mlx": "true"` in
   `ios/Podfile.properties.json` (the Expo plugin's `mlx` option), because MLX
   needs iOS 17 and pulls in mlx-swift through React Native's `spm_dependency`.

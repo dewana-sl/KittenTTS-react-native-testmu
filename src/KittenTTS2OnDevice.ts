@@ -9,7 +9,7 @@ import {
   defaultBaseURL,
 } from './kittentts2/KittenTTS2OnDeviceBase';
 import type { BundleManifest, KittenTTS2Backend, KittenTTS2Precision } from './kittentts2/bundle';
-import { MLXLanguageModel, isMLXAvailable } from './kittentts2/MLXLanguageModel';
+import { MLXAudioDecoder, MLXLanguageModel, isMLXAvailable } from './kittentts2/MLXLanguageModel';
 import type { OrtModule } from './kittentts2/ort';
 import { KittenTTSError } from './KittenTTSError';
 
@@ -95,7 +95,9 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       precision: options.precision,
       mlx: backend === 'mlx' ? tokens => loadMLX(directory, manifest, tokens) : undefined,
     });
-    return new KittenTTS2OnDevice(state);
+    const tts = new KittenTTS2OnDevice(state);
+    if (backend === 'mlx') await tts.warmUp();
+    return tts;
   }
 }
 
@@ -114,18 +116,22 @@ async function chooseBackend(backend: KittenTTS2Backend): Promise<'mlx' | 'onnx'
   return 'onnx';
 }
 
-function loadMLX(
+/** Both models on the GPU: the language model, then the audio decoder. */
+async function loadMLX(
   directory: string,
   manifest: BundleManifest,
   tokens: Parameters<typeof MLXLanguageModel.load>[2],
-): Promise<MLXLanguageModel> {
-  if (!manifest.mlx) {
+): Promise<{ languageModel: MLXLanguageModel; decoder: MLXAudioDecoder }> {
+  const mlx = manifest.mlx;
+  if (!mlx) {
     throw KittenTTSError.invalidModelData('This model folder has no MLX weights; pass backend: \'onnx\'.');
   }
-  return MLXLanguageModel.load(`${directory}/${manifest.mlx.weights}`, {
-    ...manifest.mlx.config,
+  const languageModel = await MLXLanguageModel.load(`${directory}/${mlx.weights}`, {
+    ...mlx.config,
     head_start: manifest.lm.head_start,
   }, tokens);
+  const decoder = await MLXAudioDecoder.load(`${directory}/${mlx.decoder}`, manifest.decoder.silence_token);
+  return { languageModel, decoder };
 }
 
 function stripFileScheme(path: string): string {

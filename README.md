@@ -171,9 +171,9 @@ for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
 }
 ```
 
-On an iPhone 17 it generates about as fast as it speaks with the language model
-on the GPU through MLX (opt-in, iOS 17+), and about 1.8 times slower on the CPU,
-which Android uses. It needs 2 to 2.5 GB of memory, so target phones with 8 GB.
+On an iPhone 17 it generates faster than it speaks on the GPU through MLX
+(opt-in, iOS 17+), and about 1.8 times slower than it speaks on the CPU, which
+Android uses. It needs 2 to 2.7 GB of memory, so target phones with 8 GB.
 [On-device guide →](docs/guides/kitten-tts-2-on-device.md)
 
 **Through the hosted [Kitten API](https://docs.kittenml.com/)**, with voice

@@ -75,6 +75,8 @@ export interface BundleManifest {
   /** The packed checkpoint and architecture the MLX backend reads. */
   mlx?: {
     weights: string;
+    /** s3gen's flow and vocoder weights, for the MLX decoder. */
+    decoder: string;
     config: Record<string, number>;
   };
   tokenizer: { vocab: string; merges: string; added_tokens: string };

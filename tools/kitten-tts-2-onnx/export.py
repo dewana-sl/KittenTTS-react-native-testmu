@@ -60,6 +60,7 @@ def main():
     import torch
     from transformers import AutoTokenizer
 
+    from decoder_mlx import export_mlx_decoder
     from decoder_onnx import export_flow, export_hift
     from lm_onnx import build_lm
     from voices_bundle import write_voices
@@ -81,6 +82,7 @@ def main():
     codec = S3Codec(device="cpu")
     export_flow(codec.s3gen, out / "flow.onnx")
     export_hift(codec.s3gen, out / "hift.onnx")
+    export_mlx_decoder(codec.s3gen, out / "decoder-mlx.safetensors")
 
     print("voices ...", flush=True)
     tokenizer = AutoTokenizer.from_pretrained(str(lm_dir))
@@ -97,7 +99,8 @@ def main():
         shutil.copyfile(grammars / name, out / "text" / "en" / name)
 
     files = sorted(p for p in out.rglob("*") if p.is_file() and p.name != "manifest.json")
-    only = {"lm.onnx": "onnx", "lm-int8.onnx": "onnx", "lm.onnx.data": "onnx", "lm-ternary.safetensors": "mlx"}
+    only = {"lm.onnx": "onnx", "lm-int8.onnx": "onnx", "lm.onnx.data": "onnx", "flow.onnx": "onnx",
+            "hift.onnx": "onnx", "lm-ternary.safetensors": "mlx", "decoder-mlx.safetensors": "mlx"}
     manifest = {
         "format": FORMAT,
         "version": 1,
@@ -113,7 +116,7 @@ def main():
                "speaker_dim": config.get("speaker_embedding_dim", 512), **lm},
         "decoder": {"name": "default", "flow": "flow.onnx", "hift": "hift.onnx", "cfm_steps": 2,
                     "silence_token": 4299, "token_mel_ratio": 2, "samples_per_frame": 480, "mels": 80},
-        "mlx": {"weights": "lm-ternary.safetensors",
+        "mlx": {"weights": "lm-ternary.safetensors", "decoder": "decoder-mlx.safetensors",
                 "config": {key: lm_config[key] for key in (
                     "hidden_size", "num_hidden_layers", "num_attention_heads", "num_key_value_heads",
                     "head_dim", "rope_theta", "rms_norm_eps")}},
