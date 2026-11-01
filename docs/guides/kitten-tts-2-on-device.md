@@ -7,9 +7,10 @@ voices, same prompt, same text normalization and the same sampling pipeline.
 Nothing leaves the device once the model is downloaded.
 
 It is a large model for a phone. The download is about 2 GB, the app needs about
-2.5 GB of memory while it is loaded, and it runs on the CPU, at about the speed
-it speaks on a recent Mac, so play long text with `generateStreaming()`. For
-voice cloning, or when the download is too big, use
+2 GB of memory while it is loaded, and it runs on the CPU: on an iPhone 17 it
+takes about 1.8 seconds to generate each second of speech. Use it where speech
+can be prepared ahead, or play long text with `generateStreaming()`. For voice
+cloning, live replies, or when the download is too big, use
 [Kitten TTS 2 through the Kitten API](kitten-api.md) instead.
 
 ## Quick Start
@@ -153,34 +154,51 @@ ones, exactly, packed at 4 bits as the Python package's MLX backend packs them.
 await KittenTTS.create({ model: 'KittenML/kitten-tts-2', precision: 'float32' });
 ```
 
-Both read the same weights file, so switching costs no second download. Measured
-on an M5 Pro Mac with 4 threads; a real-time factor below 1 is faster than the
-audio plays:
+Both read the same weights file, so switching costs no second download.
+
+Measured on an iPhone 17, in a Release build, on the same 8 sentences with 4
+threads. The real-time factor is seconds of generating per second of speech, so
+below 1 is faster than the audio plays:
+
+| | Real-time factor | Words right (8 sentences) | Speaker similarity |
+| --- | --- | --- | --- |
+| `'int8'` | 1.80 | all | 0.761 |
+| `'float32'` | 5.3 (one sentence) | | |
+
+On an M5 Pro Mac with 4 threads:
 
 | | Real-time factor | Words right (8 sentences) | Speaker similarity |
 | --- | --- | --- | --- |
 | `'int8'` | 0.69 | all | 0.766 |
 | `'float32'` | 1.83 | all | 0.754 |
 | The Python package, torch on the CPU | 2.95 | all | 0.763 |
+| The Python package, MLX on the GPU | 0.27 | | |
 
 Speaker similarity is the cosine between each clip's speaker embedding and the
-voice's reference, as the Python package measures its backends. In the iOS
-simulator on the same Mac, `'int8'` generated 5.2 s of speech in 5.3 s and
-loaded the model from the device in 5.4 s. Phones are slower than a Mac, and
-these numbers are not from a phone. `ortNumThreads` sets the thread count
-(default 4).
+voice's reference, as the Python package measures its backends. On the iPhone,
+loading the model from the device took 7.4 s, and streaming a 29-second text
+delivered its first 17 seconds of audio after 31 s. On a Mac, about two thirds
+of the time goes to the language model and one third to the audio decoder.
 
-The app's memory footprint was 2.4 GB, 2.6 GB at its peak. That fits phones
-with 8 GB of RAM; on iOS, add the
-`com.apple.developer.kernel.increased-memory-limit` entitlement so the system
-does not stop the app. 6 GB phones may not have room.
+`ortNumThreads` sets the thread count. The default, 4, was the fastest on the
+iPhone 17: 2 threads gave a real-time factor of 2.2, and 6 gave 3.0, because the
+extra threads land on the slower efficiency cores.
+
+The app's memory footprint on the iPhone 17 (8 GB of RAM) was about 1.8 GB while
+generating; in the iOS simulator it was 2.4 GB, 2.6 GB at its peak. On iOS, add
+the `com.apple.developer.kernel.increased-memory-limit` entitlement so the
+system does not stop the app. 6 GB phones may not have room.
 
 ## Not On The Device Yet
 
 - Voice cloning (`reference`): it needs the speech tokenizer, two speaker
   encoders and a transcription model on the device. Clone through the Kitten API.
 - Browsers: `create()` throws there; use the Kitten API.
-- The smaller `student_w4` decoder, and the GPU.
+- The smaller `student_w4` decoder.
+- The GPU or the Neural Engine: the language model's 4-bit matrix products have
+  CPU kernels only in ONNX Runtime's mobile builds. The Python package's MLX
+  backend, on a Mac's GPU, is 2.5 times faster than this runtime on the same
+  Mac's CPU.
 
 ## Compared With The Python Package
 

@@ -171,8 +171,9 @@ for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
 }
 ```
 
-It runs on the CPU at about the speed it speaks on a recent Mac, and needs
-about 2.5 GB of memory, so target phones with 8 GB.
+It runs on the CPU: an iPhone 17 takes about 1.8 seconds to generate each
+second of speech and uses about 1.8 GB of memory, so target phones with 8 GB
+and prepare speech ahead or stream it.
 [On-device guide →](docs/guides/kitten-tts-2-on-device.md)
 
 **Through the hosted [Kitten API](https://docs.kittenml.com/)**, with voice

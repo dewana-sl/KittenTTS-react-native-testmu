@@ -10,8 +10,9 @@
   normalizer, tokenizer, prompt and sampler are ports of the Python package's and
   produce the same token ids. Runs on iOS and Android through ONNX Runtime on the
   CPU, with `precision: 'int8'` (the default, about 2.5 times faster) or
-  `'float32'`. `tools/kitten-tts-2-onnx` builds the files from the model
-  repository. Voice cloning on the device and browsers are not supported yet.
+  `'float32'`; an iPhone 17 takes about 1.8 seconds per second of speech.
+  `tools/kitten-tts-2-onnx` builds the files from the model repository. Voice
+  cloning on the device, the GPU and browsers are not supported yet.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
