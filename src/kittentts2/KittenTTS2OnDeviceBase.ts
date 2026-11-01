@@ -5,7 +5,7 @@ import { KittenTTSResult } from '../KittenTTSResult';
 import { AudioDecoder } from './AudioDecoder';
 import pako from 'pako';
 import { type BundleManifest, type KittenTTS2Precision, type VoiceData, VoiceFile } from './bundle';
-import { LanguageModel, cancelled } from './LanguageModel';
+import { LanguageModel, type LanguageModelTokens, type TokenGenerator, cancelled } from './LanguageModel';
 import { Normalizer } from './normalizer/Normalizer';
 import type { OrtModule, OrtSessionOptions } from './ort';
 import { Random, type SamplingSettings } from './sampling';
@@ -92,8 +92,9 @@ export interface KittenTTS2OnDeviceGenerateOptions {
 export interface KittenTTS2OnDeviceState {
   repository: string;
   manifest: BundleManifest;
-  precision: KittenTTS2Precision;
-  languageModel: LanguageModel;
+  backend: 'mlx' | 'onnx';
+  precision: KittenTTS2Precision | 'bfloat16';
+  languageModel: TokenGenerator;
   decoder: AudioDecoder;
   tokenizer: QwenTokenizer;
   normalizer: Normalizer | null;
@@ -109,7 +110,8 @@ export interface KittenTTS2Graph {
 }
 
 export interface KittenTTS2Graphs {
-  lm: KittenTTS2Graph;
+  /** Absent when the language model runs on another backend. */
+  lm?: KittenTTS2Graph;
   flow: KittenTTS2Graph;
   hift: KittenTTS2Graph;
 }
@@ -133,6 +135,8 @@ export interface KittenTTS2OpenOptions {
   audioOutput: KittenTTS2Platform['audioOutput'];
   defaultVoice?: string;
   precision?: KittenTTS2Precision;
+  /** Loads the language model on MLX instead of ONNX Runtime. */
+  mlx?: (tokens: LanguageModelTokens) => Promise<TokenGenerator>;
 }
 
 interface Call {
@@ -143,8 +147,9 @@ interface Call {
 
 /**
  * Kitten TTS 2 on the device, with the Python package's calls: built-in voices,
- * expression tags, decoding presets and the same sampling pipeline. The language
- * model and the audio decoder run through ONNX Runtime on the CPU.
+ * expression tags, decoding presets and the same sampling pipeline. The audio
+ * decoder runs through ONNX Runtime on the CPU; the language model too, or on
+ * the GPU through MLX on iOS.
  */
 export class KittenTTS2OnDeviceBase {
   /** The model repository this instance was created from, such as `'KittenML/kitten-tts-2'`. */
@@ -153,8 +158,13 @@ export class KittenTTS2OnDeviceBase {
   readonly sampleRate: number;
   /** The built-in voices. */
   readonly voices: readonly KittenTTS2Voice[];
-  /** How the language model multiplies its activations: `'int8'` or `'float32'`. */
-  readonly precision: KittenTTS2Precision;
+  /** Where the language model runs: `'mlx'` (the GPU) or `'onnx'` (the CPU). */
+  readonly backend: 'mlx' | 'onnx';
+  /**
+   * How the language model multiplies its activations: `'int8'` or `'float32'`
+   * on ONNX Runtime, `'bfloat16'` on MLX.
+   */
+  readonly precision: KittenTTS2Precision | 'bfloat16';
 
   private readonly state: KittenTTS2OnDeviceState;
   private readonly voiceCache = new Map<string, Promise<VoiceData>>();
@@ -165,6 +175,7 @@ export class KittenTTS2OnDeviceBase {
     this.state = state;
     this.model = state.repository;
     this.sampleRate = state.manifest.sample_rate;
+    this.backend = state.backend;
     this.precision = state.precision;
     this.voices = Object.freeze(state.voiceFile.entries.map(entry => Object.freeze({
       id: entry.name,
@@ -213,8 +224,8 @@ export class KittenTTS2OnDeviceBase {
     if (defaultVoice && !voiceFile.entries.some(entry => entry.name === defaultVoice)) {
       throw KittenTTSError.invalidArgument(`defaultVoice '${defaultVoice}' is not one of the model's voices.`);
     }
-    const precision = options.precision ?? manifest.lm.default_precision;
-    if (!manifest.lm.graphs[precision]) {
+    const precision = options.mlx ? 'bfloat16' : options.precision ?? manifest.lm.default_precision;
+    if (precision !== 'bfloat16' && !manifest.lm.graphs[precision]) {
       throw KittenTTSError.invalidArgument(`precision must be one of: ${Object.keys(manifest.lm.graphs).join(', ')}.`);
     }
     const graph = async (path: string) => ({
@@ -222,13 +233,14 @@ export class KittenTTS2OnDeviceBase {
       options: { ...options.sessionOptions, ...reader.graphOptions?.(path) },
     });
     const models = await KittenTTS2OnDeviceBase.loadModels(options.ort, {
-      lm: await graph(manifest.lm.graphs[precision]),
+      lm: precision === 'bfloat16' ? undefined : await graph(manifest.lm.graphs[precision]),
       flow: await graph(manifest.decoder.flow),
       hift: await graph(manifest.decoder.hift),
-    }, manifest);
+    }, manifest, options.mlx);
     return {
       repository: options.repository,
       manifest,
+      backend: options.mlx ? 'mlx' : 'onnx',
       precision,
       tokenizer,
       normalizer,
@@ -239,27 +251,34 @@ export class KittenTTS2OnDeviceBase {
     };
   }
 
-  /** Load the three ONNX graphs. */
+  /** Load the decoder graphs, and the language model on ONNX Runtime or through `mlx`. */
   protected static async loadModels(
     ort: OrtModule,
     graphs: KittenTTS2Graphs,
     manifest: BundleManifest,
-  ): Promise<{ languageModel: LanguageModel; decoder: AudioDecoder }> {
-    const tokens = manifest.token_map;
-    let languageModel: LanguageModel | undefined;
+    mlx?: (tokens: LanguageModelTokens) => Promise<TokenGenerator>,
+  ): Promise<{ languageModel: TokenGenerator; decoder: AudioDecoder }> {
+    const tokens: LanguageModelTokens = {
+      speechEnd: manifest.token_map.speech_end_id,
+      stop: manifest.token_map.stop_id,
+      audioStart: manifest.token_map.audio_id_base,
+      audioEnd: manifest.token_map.audio_id_base + manifest.token_map.num_audio_tokens,
+    };
+    let languageModel: TokenGenerator | undefined;
     try {
-      languageModel = await LanguageModel.load(ort, graphs.lm.model, {
-        layers: manifest.lm.layers,
-        kvHeads: manifest.lm.kv_heads,
-        headDim: manifest.lm.head_dim,
-        headStart: manifest.lm.head_start,
-        speakerDim: manifest.lm.speaker_dim,
-      }, {
-        speechEnd: tokens.speech_end_id,
-        stop: tokens.stop_id,
-        audioStart: tokens.audio_id_base,
-        audioEnd: tokens.audio_id_base + tokens.num_audio_tokens,
-      }, graphs.lm.options);
+      if (mlx) {
+        languageModel = await mlx(tokens);
+      } else if (graphs.lm) {
+        languageModel = await LanguageModel.load(ort, graphs.lm.model, {
+          layers: manifest.lm.layers,
+          kvHeads: manifest.lm.kv_heads,
+          headDim: manifest.lm.head_dim,
+          headStart: manifest.lm.head_start,
+          speakerDim: manifest.lm.speaker_dim,
+        }, tokens, graphs.lm.options);
+      } else {
+        throw new Error('no language model graph');
+      }
       const decoder = await AudioDecoder.load(ort, graphs.flow, graphs.hift, {
         cfmSteps: manifest.decoder.cfm_steps,
         silenceToken: manifest.decoder.silence_token,
@@ -271,6 +290,7 @@ export class KittenTTS2OnDeviceBase {
     } catch (error) {
       // The language model alone holds 1.4 GB; do not leave it loaded.
       await languageModel?.release().catch(() => {});
+      if (isKittenTTSError(error)) throw error;
       throw KittenTTSError.inferenceFailed(`Could not load Kitten TTS 2: ${errorMessage(error)}`, error);
     }
   }

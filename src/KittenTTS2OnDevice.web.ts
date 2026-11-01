@@ -4,7 +4,7 @@ import {
   KittenTTS2OnDeviceBase,
   type KittenTTS2Repository,
 } from './kittentts2/KittenTTS2OnDeviceBase';
-import type { KittenTTS2Precision } from './kittentts2/bundle';
+import type { KittenTTS2Backend, KittenTTS2Precision } from './kittentts2/bundle';
 import { KittenTTSError } from './KittenTTSError';
 
 /** Options for `KittenTTS.create({ model: 'KittenML/kitten-tts-2', ... })`. */
@@ -16,6 +16,7 @@ export interface KittenTTS2OnDeviceCreateOptions {
   forceRedownload?: boolean;
   downloadRetries?: number;
   ortNumThreads?: number;
+  backend?: KittenTTS2Backend;
   precision?: KittenTTS2Precision;
   player?: AudioPlayer;
 }

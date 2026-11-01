@@ -54,6 +54,8 @@
     "app.plugin.js",
     "scripts/patch-onnxruntime-react-native.js",
     "android/",
+    "ios/",
+    "KittenTTSReactNative.podspec",
     "react-native.config.js",
     "assets/",
     "docs/",

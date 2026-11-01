@@ -18,7 +18,7 @@ export type {
   KittenTTS2OnDeviceGenerateOptions,
   KittenTTS2Repository,
 } from './kittentts2/KittenTTS2OnDeviceBase';
-export type { KittenTTS2Precision } from './kittentts2/bundle';
+export type { KittenTTS2Backend, KittenTTS2Precision } from './kittentts2/bundle';
 export type { KittenWordTiming } from './KittenWordTiming';
 export {
   KittenAPIError,

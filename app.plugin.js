@@ -4,15 +4,30 @@ const PbxFile = require('xcode/lib/pbxFile');
 const {
   IOSConfig,
   withDangerousMod,
+  withPodfileProperties,
   withXcodeProject,
 } = require('expo/config-plugins');
 
 const DEFAULT_ASSETS_DIR = './assets/kittentts';
 const DEFAULT_ASSET_ROOT = 'kittentts';
+// MLX, which runs Kitten TTS 2's language model on the GPU, needs iOS 17.
+const MLX_IOS_DEPLOYMENT_TARGET = '17.0';
 
 module.exports = function withKittenTTS(config, props = {}) {
   const assetsDir = props.assetsDir || DEFAULT_ASSETS_DIR;
   const assetRoot = props.assetRoot || DEFAULT_ASSET_ROOT;
+
+  if (props.mlx) {
+    // KittenTTSReactNative.podspec reads this and builds the MLX module.
+    config = withPodfileProperties(config, (nextConfig) => {
+      nextConfig.modResults['kittentts.mlx'] = 'true';
+      const current = nextConfig.modResults['ios.deploymentTarget'];
+      if (!current || parseFloat(current) < parseFloat(MLX_IOS_DEPLOYMENT_TARGET)) {
+        nextConfig.modResults['ios.deploymentTarget'] = MLX_IOS_DEPLOYMENT_TARGET;
+      }
+      return nextConfig;
+    });
+  }
 
   config = withDangerousMod(config, [
     'android',

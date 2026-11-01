@@ -3,10 +3,12 @@
     pip install -r requirements.txt
     python export.py --out kitten-tts-2-onnx
 
-Writes a folder the SDK downloads as-is: the language model, the two decoder
-graphs, the precomputed built-in voices, the tokenizer files, the English
-normalization grammars and a manifest.json that lists every file with its size
-and SHA-256. Upload the folder anywhere and point `modelBaseURL` at it, or put it
+Writes a folder the SDK downloads as-is: the language model as ONNX graphs and
+as the packed checkpoint MLX reads on iOS, the two decoder graphs, the
+precomputed built-in voices, the tokenizer files, the English normalization
+grammars and a manifest.json that lists every file with its size and SHA-256.
+Files only one backend reads are marked with it, so a device downloads one copy
+of the language model. Upload the folder anywhere and point `modelBaseURL` at it, or put it
 in the model repository under `onnx/`, where the SDK looks by default.
 """
 
@@ -86,6 +88,8 @@ def main():
 
     for name in ("vocab.json", "merges.txt", "added_tokens.json"):
         shutil.copyfile(lm_dir / name, out / name)
+    # MLX unpacks the published ternary checkpoint itself, as the Python package's MLX backend does.
+    shutil.copyfile(repo_dir / config["lm_packed"], out / "lm-ternary.safetensors")
     import kitten_text_processing
     grammars = pathlib.Path(kitten_text_processing.__file__).parent / "data" / "en"
     (out / "text" / "en").mkdir(parents=True, exist_ok=True)
@@ -93,6 +97,7 @@ def main():
         shutil.copyfile(grammars / name, out / "text" / "en" / name)
 
     files = sorted(p for p in out.rglob("*") if p.is_file() and p.name != "manifest.json")
+    only = {"lm.onnx": "onnx", "lm-int8.onnx": "onnx", "lm.onnx.data": "onnx", "lm-ternary.safetensors": "mlx"}
     manifest = {
         "format": FORMAT,
         "version": 1,
@@ -108,17 +113,24 @@ def main():
                "speaker_dim": config.get("speaker_embedding_dim", 512), **lm},
         "decoder": {"name": "default", "flow": "flow.onnx", "hift": "hift.onnx", "cfm_steps": 2,
                     "silence_token": 4299, "token_mel_ratio": 2, "samples_per_frame": 480, "mels": 80},
+        "mlx": {"weights": "lm-ternary.safetensors",
+                "config": {key: lm_config[key] for key in (
+                    "hidden_size", "num_hidden_layers", "num_attention_heads", "num_key_value_heads",
+                    "head_dim", "rope_theta", "rms_norm_eps")}},
         "tokenizer": {"vocab": "vocab.json", "merges": "merges.txt", "added_tokens": "added_tokens.json"},
         "normalizer": {"version": kitten_text_processing.__version__,
                        "en": {"tagger": "text/en/tagger.fst.gz", "verbalizer": "text/en/verbalizer.fst.gz",
                               "post": "text/en/post.fst.gz"}},
         "voices": "voices.bin",
-        "files": [{"path": p.relative_to(out).as_posix(), "size": p.stat().st_size, "sha256": sha256(p)}
+        "files": [{"path": p.relative_to(out).as_posix(), "size": p.stat().st_size, "sha256": sha256(p),
+                   **({"backend": only[p.name]} if p.name in only else {})}
                   for p in files],
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    total = sum(f["size"] for f in manifest["files"])
-    print(f"{len(voices)} voices, {len(files)} files, {total / 1e9:.2f} GB in {time.time() - start:.0f}s -> {out}")
+    for backend in ("onnx", "mlx"):
+        total = sum(f["size"] for f in manifest["files"] if f.get("backend", backend) == backend)
+        print(f"{backend}: {total / 1e9:.2f} GB to download")
+    print(f"{len(voices)} voices, {len(files)} files in {time.time() - start:.0f}s -> {out}")
 
 
 if __name__ == "__main__":

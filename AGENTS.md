@@ -52,6 +52,17 @@ Main flow:
   voices.bin). Keep the ports line-for-line with the Python package: text and
   token ids must match it, which `tests/live/kitten-tts-2-on-device.live.test.js`
   checks against `tests/fixtures/kitten-tts-2-text.json`.
+- `ios/` and `KittenTTSReactNative.podspec`: the opt-in MLX backend for Kitten
+  TTS 2's language model. `KittenTTS2LanguageModel.swift` ports the Python
+  package's `mlx/model.py` and `loader.py`, `KittenTTS2Sampler.swift` ports
+  `sampling.ts`, `KittenTTS2MLXEngine.swift` runs the token loop on its own
+  queue, and `KittenTTS2MLXModule.m` exposes it to JS as `KittenTTS2MLX`
+  (used by `src/kittentts2/MLXLanguageModel.ts`). The podspec has no sources
+  unless `KITTENTTS_MLX=1` or `"kittentts.mlx": "true"` in
+  `ios/Podfile.properties.json` (the Expo plugin's `mlx` option), because MLX
+  needs iOS 17 and pulls in mlx-swift through React Native's `spm_dependency`.
+  MLX does not run in the iOS simulator: test it on a device. Building it needs
+  Xcode's Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`).
 - `tools/kitten-tts-2-onnx/`: the Python exporter for those files (`export.py`)
   and a parity check against the Python package (`check.py`). Not shipped in the
   npm package.

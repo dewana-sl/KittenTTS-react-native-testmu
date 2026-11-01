@@ -16,12 +16,17 @@ It takes about a minute on a laptop and writes about 2 GB:
 |---|---|---|
 | `lm.onnx.data` | 1.43 GB | The 1.7B speech language model's weights, with its speaker head |
 | `lm-int8.onnx`, `lm.onnx` | 0.5 MB | Its graph with int8 activations, and with float32 ones |
+| `lm-ternary.safetensors` | 954 MB | The packed checkpoint, copied as-is, for the SDK's MLX backend on iOS |
 | `flow.onnx` | 482 MB | s3gen's flow: codec tokens to a mel spectrogram, two meanflow steps |
 | `hift.onnx` | 83 MB | s3gen's HiFT vocoder: mel spectrogram to 24 kHz audio |
 | `voices.bin` | 19 MB | Every built-in voice, precomputed: prompt prefix, speaker embedding, decoder conditioning |
 | `vocab.json`, `merges.txt`, `added_tokens.json` | 4.6 MB | The Qwen tokenizer, copied from the repository |
 | `text/en/*.fst.gz` | 0.8 MB | kitten-text-processing's English grammars |
 | `manifest.json` | | Every file with its size and SHA-256, plus the model's settings |
+
+Files only one backend reads carry `"backend": "onnx"` or `"mlx"` in the
+manifest, so a device downloads one copy of the language model: 2.02 GB for
+ONNX Runtime, 1.54 GB for MLX.
 
 Upload the folder to the model repository as `onnx/`, where the SDK looks by
 default, or anywhere else and pass that URL as `modelBaseURL`.

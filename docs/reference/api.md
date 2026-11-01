@@ -170,7 +170,8 @@ await tts.generate('[sad] Maybe tomorrow <sigh>.', { voice: 'Luna', preset: 'exp
 | --- | --- | --- |
 | `model` | required | A Kitten TTS 2 repository: `'KittenML/kitten-tts-2'` |
 | `modelBaseURL` | the repository's `onnx/` folder on Hugging Face | Where `manifest.json` and the files it lists are served |
-| `precision` | `'int8'` | `'int8'` activations (faster) or `'float32'` |
+| `backend` | `'auto'` | `'mlx'` (the GPU, iOS with the MLX module), `'onnx'` (the CPU), or `'auto'`: MLX when available |
+| `precision` | `'int8'` | On ONNX Runtime: `'int8'` activations (faster) or `'float32'` |
 | `defaultVoice` | the model's (`'Bruno'`) | Voice used when a call names none |
 | `storageDirectory` | `<DocumentDirectory>/KittenTTS` | Files go in `<storageDirectory>/KittenML--kitten-tts-2/` |
 | `forceRedownload` | `false` | Delete the files and download them again |
@@ -191,7 +192,8 @@ downloaded, and the overall fraction across all files.
 | `availableVoices` | Voice names accepted by `voice` |
 | `voices` | `{ id, name, language, type, experimental }` for each voice |
 | `presets` | Preset names accepted by `preset` |
-| `precision` | The language model graph in use |
+| `backend` | Where the language model runs: `'mlx'` or `'onnx'` |
+| `precision` | `'int8'` or `'float32'` on ONNX Runtime, `'bfloat16'` on MLX |
 | `model` | The repository it was created from |
 | `sampleRate` | `24000` |
 | `dispose()` | Stops generation between tokens and frees the models |

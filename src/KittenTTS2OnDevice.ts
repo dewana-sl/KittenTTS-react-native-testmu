@@ -8,8 +8,10 @@ import {
   checkRepository,
   defaultBaseURL,
 } from './kittentts2/KittenTTS2OnDeviceBase';
-import type { KittenTTS2Precision } from './kittentts2/bundle';
+import type { BundleManifest, KittenTTS2Backend, KittenTTS2Precision } from './kittentts2/bundle';
+import { MLXLanguageModel, isMLXAvailable } from './kittentts2/MLXLanguageModel';
 import type { OrtModule } from './kittentts2/ort';
+import { KittenTTSError } from './KittenTTSError';
 
 /** Options for `KittenTTS.create({ model: 'KittenML/kitten-tts-2', ... })`. */
 export interface KittenTTS2OnDeviceCreateOptions {
@@ -31,8 +33,14 @@ export interface KittenTTS2OnDeviceCreateOptions {
   /** ONNX Runtime threads. Defaults to 4. */
   ortNumThreads?: number;
   /**
-   * How the language model multiplies: `'int8'` activations, about 2.5 times
-   * faster, or `'float32'`. Defaults to the model folder's choice, `'int8'`.
+   * Where the language model runs, as the Python package's `backend=`: `'mlx'`
+   * on the GPU (iOS 17 and later, in an app built with the SDK's MLX module),
+   * `'onnx'` on the CPU, or `'auto'` (the default), MLX when it is available.
+   */
+  backend?: KittenTTS2Backend;
+  /**
+   * How the language model multiplies on ONNX Runtime: `'int8'` activations,
+   * about 2.5 times faster, or `'float32'`. Defaults to the model folder's choice, `'int8'`.
    */
   precision?: KittenTTS2Precision;
   /**
@@ -62,6 +70,7 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS2OnDevice> {
     const repository = checkRepository(options?.model);
+    const backend = await chooseBackend(options.backend ?? 'auto');
     const root = options.storageDirectory ?? `${RNFS.DocumentDirectoryPath}/KittenTTS`;
     const directory = `${stripFileScheme(root)}/${repository.replace('/', '--')}`;
     const manifest = await downloadBundle({
@@ -69,6 +78,7 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       directory,
       force: options.forceRedownload ?? false,
       retries: Math.max(1, Math.floor(options.downloadRetries ?? 4)),
+      backend,
     }, onProgress);
     const ort = (await import('onnxruntime-react-native')) as unknown as OrtModule;
     const state = await KittenTTS2OnDeviceBase.open({
@@ -83,9 +93,39 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       audioOutput: new AudioOutput(options.player),
       defaultVoice: options.defaultVoice,
       precision: options.precision,
+      mlx: backend === 'mlx' ? tokens => loadMLX(directory, manifest, tokens) : undefined,
     });
     return new KittenTTS2OnDevice(state);
   }
+}
+
+async function chooseBackend(backend: KittenTTS2Backend): Promise<'mlx' | 'onnx'> {
+  if (backend === 'onnx') return 'onnx';
+  if (backend !== 'auto' && backend !== 'mlx') {
+    throw KittenTTSError.invalidArgument("backend must be 'auto', 'mlx' or 'onnx'.");
+  }
+  if (await isMLXAvailable()) return 'mlx';
+  if (backend === 'mlx') {
+    throw KittenTTSError.invalidArgument(
+      "backend 'mlx' needs an iPhone or iPad with iOS 17 or later (not the simulator) and an app built " +
+      'with the SDK\'s MLX module: the Expo plugin\'s mlx option, or KITTENTTS_MLX=1 pod install.',
+    );
+  }
+  return 'onnx';
+}
+
+function loadMLX(
+  directory: string,
+  manifest: BundleManifest,
+  tokens: Parameters<typeof MLXLanguageModel.load>[2],
+): Promise<MLXLanguageModel> {
+  if (!manifest.mlx) {
+    throw KittenTTSError.invalidModelData('This model folder has no MLX weights; pass backend: \'onnx\'.');
+  }
+  return MLXLanguageModel.load(`${directory}/${manifest.mlx.weights}`, {
+    ...manifest.mlx.config,
+    head_start: manifest.lm.head_start,
+  }, tokens);
 }
 
 function stripFileScheme(path: string): string {

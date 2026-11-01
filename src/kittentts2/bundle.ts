@@ -11,6 +11,13 @@ export const BUNDLE_FORMAT = 'kittentts-react-native/kitten-tts-2-onnx';
  */
 export type KittenTTS2Precision = 'int8' | 'float32';
 
+/**
+ * Where the language model runs: `'onnx'`, ONNX Runtime on the CPU (iOS and
+ * Android), or `'mlx'`, MLX on the GPU (iOS 17 and later, when the app builds
+ * the SDK's MLX module). `'auto'` picks MLX when it is available.
+ */
+export type KittenTTS2Backend = 'auto' | 'mlx' | 'onnx';
+
 export interface DecodePreset {
   temperature: number;
   top_p: number;
@@ -65,10 +72,16 @@ export interface BundleManifest {
     samples_per_frame: number;
     mels: number;
   };
+  /** The packed checkpoint and architecture the MLX backend reads. */
+  mlx?: {
+    weights: string;
+    config: Record<string, number>;
+  };
   tokenizer: { vocab: string; merges: string; added_tokens: string };
   normalizer: { en: { tagger: string; verbalizer: string; post?: string } };
   voices: string;
-  files: Array<{ path: string; size: number; sha256?: string }>;
+  /** Every file, with its size and hash; `backend` marks the files only one backend reads. */
+  files: Array<{ path: string; size: number; sha256?: string; backend?: 'mlx' | 'onnx' }>;
 }
 
 export function checkManifest(value: unknown, source: string): BundleManifest {

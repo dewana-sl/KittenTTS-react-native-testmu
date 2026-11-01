@@ -21,6 +21,8 @@ export interface BundleDownloadOptions {
   directory: string;
   force: boolean;
   retries: number;
+  /** Which backend's files to download; files marked for the other are skipped. */
+  backend: 'mlx' | 'onnx';
 }
 
 /**
@@ -38,8 +40,9 @@ export async function downloadBundle(
 
   const manifest = await fetchManifest(options);
   const record = await readRecord(directory);
+  const files = manifest.files.filter(file => !file.backend || file.backend === options.backend);
   const missing: Array<{ path: string; size: number; sha256?: string }> = [];
-  for (const file of manifest.files) {
+  for (const file of files) {
     const stat = await RNFS.stat(`${directory}/${file.path}`).catch(() => null);
     const changed = file.sha256 !== undefined && record[file.path] !== file.sha256;
     if (!stat || Number(stat.size) !== file.size || changed) missing.push(file);
@@ -50,7 +53,7 @@ export async function downloadBundle(
     return manifest;
   }
 
-  const total = manifest.files.reduce((sum, file) => sum + file.size, 0);
+  const total = files.reduce((sum, file) => sum + file.size, 0);
   let done = total - missing.reduce((sum, file) => sum + file.size, 0);
   for (const file of missing) {
     const target = `${directory}/${file.path}`;

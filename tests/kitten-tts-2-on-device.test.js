@@ -178,7 +178,7 @@ function identityGrammar() {
   return data;
 }
 
-async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [] } = {}) {
+async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [], mlx } = {}) {
   const files = tokenizerFiles();
   const reader = {
     readText: async path => ({ 'vocab.json': files.vocab, 'merges.txt': files.merges, 'added_tokens.json': files.added })[path],
@@ -200,12 +200,12 @@ async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCal
     opened.push(model);
     return create(model, options);
   };
-  const state = await openWithoutGrammars({ reader, ort, precision });
+  const state = await openWithoutGrammars({ reader, ort, precision, mlx });
   return new KittenTTS2OnDeviceBase(state);
 }
 
 // The grammars copy their input, so normalization fails over to the cleaned text.
-async function openWithoutGrammars({ reader, ort, precision }) {
+async function openWithoutGrammars({ reader, ort, precision, mlx }) {
   const pako = require('pako');
   const grammar = pako.gzip(identityGrammar());
   const withGrammars = { ...reader, readBytes: async (path, offset, length) => (path === 'tagger' || path === 'verbalizer' ? grammar : reader.readBytes(path, offset, length)) };
@@ -217,6 +217,7 @@ async function openWithoutGrammars({ reader, ort, precision }) {
     sessionOptions: {},
     audioOutput: { play: async () => {}, stop: async () => {} },
     precision,
+    mlx,
   });
 }
 
@@ -439,6 +440,29 @@ test('precision picks the language model graph', async () => {
   assert.equal((await createTTS({ opened, precision: 'float32' })).precision, 'float32');
   assert.equal(opened[0], 'lm-float32.onnx');
   await assert.rejects(createTTS({ precision: 'float16' }), error => error.code === 'INVALID_ARGUMENT');
+});
+
+test('an MLX language model takes the place of the ONNX graph', async () => {
+  const opened = [];
+  const calls = [];
+  const generator = {
+    async generate(prompt, speaker, settings, maxNewTokens) {
+      calls.push({ prompt, speaker: [...speaker], settings, maxNewTokens });
+      return [4, 5, 6];
+    },
+    async release() {},
+  };
+  let tokens;
+  const tts = await createTTS({ opened, mlx: async t => { tokens = t; return generator; } });
+  assert.equal(tts.backend, 'mlx');
+  assert.equal(tts.precision, 'bfloat16');
+  assert.ok(!opened.some(model => model.startsWith('lm')), `opened ${opened}`);
+  assert.deepEqual(tokens, { speechEnd: TOKENS.speech_end_id, stop: TOKENS.stop_id, audioStart: AUDIO, audioEnd: AUDIO + 6561 });
+  const result = await tts.generate('he', { voice: 'Luna', temperature: 0.7 });
+  assert.ok(result.samples.length > 0);
+  assert.equal(calls[0].settings.temperature, 0.7);
+  assert.deepEqual(calls[0].speaker, [2, 2, 2, 2]);
+  assert.deepEqual(calls[0].prompt.slice(-1), [TOKENS.speech_start_id]);
 });
 
 test('repositories select the on-device model; API model IDs do not', () => {

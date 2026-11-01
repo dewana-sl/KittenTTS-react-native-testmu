@@ -17,6 +17,23 @@ export interface LanguageModelTokens {
   audioEnd: number;
 }
 
+/** What generation needs from a language model backend: ONNX Runtime, or MLX on iOS. */
+export interface TokenGenerator {
+  /**
+   * Run the model over `prompt` and sample until `<speech_end>`, `[STOP]` or
+   * `maxNewTokens`. Returns the codec ids it wrote, 0-based.
+   */
+  generate(
+    prompt: readonly number[],
+    speaker: Float32Array,
+    settings: SamplingSettings,
+    maxNewTokens: number,
+    random: Random,
+    signal?: { readonly aborted: boolean },
+  ): Promise<number[]>;
+  release(): Promise<void>;
+}
+
 // The cache grows in blocks: reallocating per token would copy all of it every step.
 const CACHE_BLOCK = 256;
 
@@ -28,7 +45,7 @@ const CACHE_BLOCK = 256;
  * passes a typed array by the start of its buffer, so every view starts at
  * offset 0, and row 0 of each buffer is the graph's unused row.
  */
-export class LanguageModel {
+export class LanguageModel implements TokenGenerator {
   private keys: Float32Array[] = [];
   private values: Float32Array[] = [];
   private capacity = 0;
@@ -63,10 +80,6 @@ export class LanguageModel {
     return new LanguageModel(ort, await ort.InferenceSession.create(model, options), info, tokens);
   }
 
-  /**
-   * Run the model over `prompt` and sample until `<speech_end>`, `[STOP]` or
-   * `maxNewTokens`. Returns the codec ids it wrote, 0-based.
-   */
   async generate(
     prompt: readonly number[],
     speaker: Float32Array,
