@@ -26,7 +26,9 @@ export type DownloadProgressAsset =
   | 'model'
   | 'voices'
   | 'phonemizer-rules'
-  | 'phonemizer-list';
+  | 'phonemizer-list'
+  /** A file of the on-device Kitten TTS 2 model; `file` names it. */
+  | 'kitten-tts-2';
 
 export interface DownloadProgressInfo {
   stage: DownloadProgressStage;
@@ -36,6 +38,8 @@ export interface DownloadProgressInfo {
   totalAttempts?: number;
   bytesWritten?: number;
   contentLength?: number;
+  /** For Kitten TTS 2, the file being downloaded, such as `'lm.onnx.data'`. */
+  file?: string;
   message?: string;
 }
 

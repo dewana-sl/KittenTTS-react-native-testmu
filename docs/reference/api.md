@@ -152,6 +152,55 @@ await tts.generate('Hello.', { reference: recordingUri, preset: 'stable' });
 `voice` is the voice ID sent, or `''` when the API chose the voice or it was
 cloned from `reference`, and `wordTimings` is empty.
 
+## Kitten TTS 2 On The Device: `KittenTTS2OnDevice`
+
+`KittenTTS.create({ model: 'KittenML/kitten-tts-2', ... })` returns a
+`KittenTTS2OnDevice`: Kitten TTS 2 running in the app, with the Python package's
+calls. It downloads about 2 GB on first use. iOS and Android only. See the
+[on-device guide](../guides/kitten-tts-2-on-device.md).
+
+```tsx
+const tts = await KittenTTS.create({ model: 'KittenML/kitten-tts-2', player }, onProgress);
+
+await tts.generate('Hello.', 'Bruno');
+await tts.generate('[sad] Maybe tomorrow <sigh>.', { voice: 'Luna', preset: 'expressive', advanced: { seed: 1 } });
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `model` | required | A Kitten TTS 2 repository: `'KittenML/kitten-tts-2'` |
+| `modelBaseURL` | the repository's `onnx/` folder on Hugging Face | Where `manifest.json` and the files it lists are served |
+| `precision` | `'int8'` | `'int8'` activations (faster) or `'float32'` |
+| `defaultVoice` | the model's (`'Bruno'`) | Voice used when a call names none |
+| `storageDirectory` | `<DocumentDirectory>/KittenTTS` | Files go in `<storageDirectory>/KittenML--kitten-tts-2/` |
+| `forceRedownload` | `false` | Delete the files and download them again |
+| `downloadRetries` | `4` | Attempts per file |
+| `ortNumThreads` | `4` | ONNX Runtime threads |
+| `player` | none | Required for `speak()` and `play()` |
+
+The progress callback reports `asset: 'kitten-tts-2'` with the `file` being
+downloaded, and the overall fraction across all files.
+
+| Member | Description |
+| --- | --- |
+| `generate(text, voice?)` | Complete speech as a `KittenTTSResult<string>`, long text chunked and joined |
+| `generate(text, options)` | With `voice`, `preset`, `temperature`, `topK`, `topP`, `minP`, `maxNewTokens`, `normalize`, `useReferencePrompt`, `advanced`, `signal` |
+| `generateStreaming(text, voice?)` or `(text, options)` | Yields each text chunk's audio as it is decoded |
+| `speak(...)`, `play(result)`, `stopSpeaking()` | As on the device |
+| `normalizeText(text)` | The spoken form the model hears |
+| `availableVoices` | Voice names accepted by `voice` |
+| `voices` | `{ id, name, language, type, experimental }` for each voice |
+| `presets` | Preset names accepted by `preset` |
+| `precision` | The language model graph in use |
+| `model` | The repository it was created from |
+| `sampleRate` | `24000` |
+| `dispose()` | Stops generation between tokens and frees the models |
+
+`advanced` takes `repetitionPenalty`, `repetitionWindow`, `tokenRunPenalty`,
+`tokenRunGrace`, `chunkChars`, `chunkMinChars`, `chunkGapSeconds`, `useEmotion`
+and `seed`, the Python package's `advanced=` keys. One generation runs at a
+time; later calls wait for it.
+
 ## Cache Methods
 
 | Method | Description |
@@ -211,10 +260,10 @@ try {
 | `PHONEMIZER_FAILED` | Text-to-phoneme conversion failed |
 | `INFERENCE_FAILED` | ONNX Runtime setup or inference failed |
 | `PLAYBACK_FAILED` | Audio playback failed |
-| `INVALID_ARGUMENT` | An argument was invalid, e.g. both `voice` and `reference` |
+| `INVALID_ARGUMENT` | An argument was invalid, e.g. both `voice` and `reference`, or a voice the model does not have |
 | `API_ERROR` | The Kitten API answered with an error (`KittenAPIError`) |
 | `NETWORK_ERROR` | The Kitten API could not be reached, or timed out (`KittenAPIError`) |
-| `CANCELLED` | A Kitten API request was cancelled by its `signal` or `dispose()` |
+| `CANCELLED` | A Kitten API request or an on-device generation was cancelled by its `signal` or `dispose()` |
 
 `KittenAPIError` also carries `status`, `apiCode` (the API's own code, such as
 `invalid_voice`), `param`, `requestId` and `retryAfter`. Check for it with

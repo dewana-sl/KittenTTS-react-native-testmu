@@ -1,11 +1,11 @@
 # Kitten TTS 2 Through The Kitten API
 
 Kitten TTS 2 is KittenML's 1.7B-parameter speech model, with voice cloning,
-expression tags and 170+ voices in 20 languages. It is too large to run inside
-a phone app, so this SDK runs it on the hosted
-[Kitten API](https://docs.kittenml.com/) instead. It loads through the same
-`KittenTTS.create()` and answers the same calls as the on-device models, the
-way `KittenTTS("KittenML/kitten-tts-2")` does in the Python package.
+expression tags and 170+ voices in 20 languages. Through the hosted
+[Kitten API](https://docs.kittenml.com/) it runs on KittenML's servers, with
+voice cloning and nothing to download; to run it inside the app instead, see
+[Kitten TTS 2 on the device](kitten-tts-2-on-device.md). It loads through the
+same `KittenTTS.create()` and answers the same calls as the on-device models.
 
 Nothing is downloaded to the device. The text you pass, and any reference
 recording, is sent to the API, and each generation is billed to your KittenML

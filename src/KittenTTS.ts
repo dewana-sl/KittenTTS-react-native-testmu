@@ -11,6 +11,8 @@ import {
 } from './KittenTTSError';
 import { KittenTTSResult } from './KittenTTSResult';
 import { KittenTTS2, type KittenTTS2CreateOptions } from './KittenTTS2';
+import { KittenTTS2OnDevice, type KittenTTS2OnDeviceCreateOptions } from './KittenTTS2OnDevice';
+import { isKittenTTS2Repository } from './kittentts2/KittenTTS2OnDeviceBase';
 import { isKittenTTS2Model } from './api/KittenTTS2Base';
 import { KittenModel, speedPrior } from './KittenModel';
 import { KittenVoice } from './KittenVoice';
@@ -114,10 +116,17 @@ export class KittenTTS {
    * Kitten TTS 2 through the Kitten API, with the same calls plus voice
    * cloning and presets. Nothing is downloaded for it.
    *
+   * With `model: 'KittenML/kitten-tts-2'` it returns a {@link KittenTTS2OnDevice}:
+   * Kitten TTS 2 on the device, about 2 GB downloaded on first use.
+   *
    * @param options - Configuration and player for this session.
    * @param onProgress - Optional callback for download progress [0, 1].
    * @returns A ready-to-use KittenTTS instance.
    */
+  static create(
+    options: KittenTTS2OnDeviceCreateOptions,
+    onProgress?: ProgressHandler,
+  ): Promise<KittenTTS2OnDevice>;
   static create(
     options: KittenTTS2CreateOptions,
     onProgress?: ProgressHandler,
@@ -127,9 +136,12 @@ export class KittenTTS {
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS>;
   static async create(
-    options?: KittenTTSCreateOptions | KittenTTS2CreateOptions,
+    options?: KittenTTSCreateOptions | KittenTTS2CreateOptions | KittenTTS2OnDeviceCreateOptions,
     onProgress?: ProgressHandler,
-  ): Promise<KittenTTS | KittenTTS2> {
+  ): Promise<KittenTTS | KittenTTS2 | KittenTTS2OnDevice> {
+    if (isKittenTTS2Repository(options?.model)) {
+      return KittenTTS2OnDevice.create(options as KittenTTS2OnDeviceCreateOptions, onProgress);
+    }
     if (isKittenTTS2Model(options?.model)) {
       const tts = await KittenTTS2.create(options as KittenTTS2CreateOptions);
       onProgress?.(1, { stage: 'complete' });

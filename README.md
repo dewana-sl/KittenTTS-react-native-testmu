@@ -63,8 +63,9 @@ KittenTTS React Native lets you add local speech synthesis to a mobile app:
   the native app.
 - **App-friendly output** - play audio directly, save WAV data, or use generated
   word timings for read-aloud UI.
-- **Kitten TTS 2 when you want it** - the larger model, with voice cloning and
-  expression tags, through the Kitten API with the same calls.
+- **Kitten TTS 2 when you want it** - the larger model, with expression tags
+  and 115 voices, on the device (a 2 GB download) or through the Kitten API,
+  with voice cloning, using the same calls.
 
 With the on-device models: no cloud, no API key, no text leaving the device for
 speech generation.
@@ -146,17 +147,39 @@ await tts.speak('This voice is generated in the browser.');
 
 ---
 
-## Kitten TTS 2 Through The Kitten API
+## Kitten TTS 2
 
-Kitten TTS 2 is too large to run inside an app, so the SDK runs it on the
-hosted [Kitten API](https://docs.kittenml.com/). It loads through the same
-`KittenTTS.create()` and answers the same calls, like
-`KittenTTS("KittenML/kitten-tts-2")` in the Python package:
+Kitten TTS 2 is KittenML's 1.7B-parameter speech model. It loads through the
+same `KittenTTS.create()` and answers the same calls, two ways.
+
+**On the device**, as `KittenTTS("KittenML/kitten-tts-2")` runs it in the Python
+package: about 2 GB downloaded on first use, then nothing leaves the phone.
 
 ```tsx
 import * as ExpoAudio from 'expo-audio';
 import { KittenTTS, createExpoAudioPlayer } from '@kittentts/react-native';
 
+const tts = await KittenTTS.create({
+  model: 'KittenML/kitten-tts-2',
+  player: createExpoAudioPlayer(ExpoAudio),
+});
+
+await tts.speak('[joyful] It runs on the phone <laugh>!', 'Bruno');
+
+for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
+  await tts.play(chunk);
+}
+```
+
+It runs on the CPU at about the speed it speaks on a recent Mac, and needs
+about 2.5 GB of memory, so target phones with 8 GB.
+[On-device guide →](docs/guides/kitten-tts-2-on-device.md)
+
+**Through the hosted [Kitten API](https://docs.kittenml.com/)**, with voice
+cloning and nothing to download. The text you pass is sent to the API and
+billed to your KittenML account.
+
+```tsx
 const tts = await KittenTTS.create({
   model: 'kitten-tts-2',
   apiKey: KITTENML_API_KEY, // ship with baseUrl and your own backend instead
@@ -169,15 +192,9 @@ const cloned = await tts.generate('This sentence uses my voice.', {
   reference: recordingUri,
   preset: 'stable',
 });
-
-for await (const chunk of tts.generateStreaming(longText, 'bella_en')) {
-  await tts.play(chunk);
-}
 ```
 
-`tts.availableVoices` lists the voice IDs. The text you pass is sent to the API
-and billed to your KittenML account.
-
+`tts.availableVoices` lists the voice IDs.
 [Kitten API guide →](docs/guides/kitten-api.md)
 
 ---
@@ -230,6 +247,7 @@ If the app opens in Expo Go, stop it and run `npx expo run:ios` or
 - [WAV output](docs/reference/api.md#kittenttsresult) as raw PCM samples, bytes, or base64.
 - [Word timings](docs/guides/word-timings.md) for read-aloud highlighting.
 - [Streaming generation](docs/reference/api.md#ttsgeneratestreamingtext-voice-speed) for longer text.
+- [Kitten TTS 2 on the device](docs/guides/kitten-tts-2-on-device.md), with expression tags and 115 voices.
 - [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md), with voice cloning.
 
 ---
@@ -266,6 +284,7 @@ await tts.speak('Slower Bruno speaking.', KittenVoice.Bruno, 0.85);
 - [Docs overview](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Playback](docs/guides/playback.md)
+- [Kitten TTS 2 on the device](docs/guides/kitten-tts-2-on-device.md)
 - [Kitten TTS 2 through the Kitten API](docs/guides/kitten-api.md)
 - [Bundled offline assets](docs/guides/offline-assets.md)
 - [Word timings](docs/guides/word-timings.md)

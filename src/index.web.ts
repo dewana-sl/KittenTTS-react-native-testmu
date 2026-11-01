@@ -11,6 +11,14 @@ export type {
   KittenTTS2Voice,
 } from './api/KittenTTS2Base';
 export type { FetchLike } from './api/KittenAPI';
+export { KittenTTS2OnDevice } from './KittenTTS2OnDevice.web';
+export type { KittenTTS2OnDeviceCreateOptions } from './KittenTTS2OnDevice.web';
+export type {
+  KittenTTS2AdvancedOptions,
+  KittenTTS2OnDeviceGenerateOptions,
+  KittenTTS2Repository,
+} from './kittentts2/KittenTTS2OnDeviceBase';
+export type { KittenTTS2Precision } from './kittentts2/bundle';
 export type { KittenWordTiming } from './KittenWordTiming';
 export {
   KittenAPIError,

@@ -13,6 +13,7 @@ feature you need.
 ## Guides
 
 - [Playback](guides/playback.md) - Expo Audio, React Native Sound, and custom players.
+- [Kitten TTS 2 on the device](guides/kitten-tts-2-on-device.md) - the larger model, downloaded once and run in the app.
 - [Kitten TTS 2 through the Kitten API](guides/kitten-api.md) - the larger model, voice cloning, presets.
 - [Bundled offline assets](guides/offline-assets.md) - ship models inside the app.
 - [Word timings](guides/word-timings.md) - highlight words while audio plays.

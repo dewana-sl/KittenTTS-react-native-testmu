@@ -1,0 +1,1181 @@
+[
+ {
+  "text": "Hello there.",
+  "spoken": "Hello there.",
+  "raw": "Hello there.",
+  "chunks": [
+   "Hello there."
+  ],
+  "ids": [
+   [
+    9707,
+    1052,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "I paid $12.50 for 3 books on Jan 5th, 2024 at 3:45 PM.",
+  "spoken": "I paid twelve dollars fifty cents for three books on january fifth, twenty twenty four at three forty five PM.",
+  "raw": "I paid $12.50 for 3 books on Jan 5th, 2024 at 3:45 PM.",
+  "chunks": [
+   "I paid twelve dollars fifty cents for three books on january fifth, twenty twenty four at three forty five PM."
+  ],
+  "ids": [
+   [
+    40,
+    7171,
+    29235,
+    11192,
+    32417,
+    30191,
+    369,
+    2326,
+    6467,
+    389,
+    32862,
+    3536,
+    17702,
+    11,
+    17073,
+    17073,
+    3040,
+    518,
+    2326,
+    35398,
+    4236,
+    5851,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "The meeting is at 10:30am on 12/25/2023.",
+  "spoken": "The meeting is at ten thirty AM on december twenty fifth twenty twenty three.",
+  "raw": "The meeting is at 10:30am on 12/25/2023.",
+  "chunks": [
+   "The meeting is at ten thirty AM on december twenty fifth twenty twenty three."
+  ],
+  "ids": [
+   [
+    785,
+    6438,
+    374,
+    518,
+    5779,
+    26127,
+    6769,
+    389,
+    89011,
+    17073,
+    17702,
+    17073,
+    17073,
+    2326,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Dr. Smith lives at 221B Baker St. and earns €1,250,000 per year!",
+  "spoken": "Doctor Smith lives at two hundred twenty one B Baker St. and earns one million two hundred fifty thousand euros per year!",
+  "raw": "Dr. Smith lives at 221B Baker St. and earns €1,250,000 per year!",
+  "chunks": [
+   "Doctor Smith lives at two hundred twenty one B Baker St. and earns one million two hundred fifty thousand euros per year!"
+  ],
+  "ids": [
+   [
+    42724,
+    9082,
+    6305,
+    518,
+    1378,
+    7739,
+    17073,
+    825,
+    425,
+    28392,
+    794,
+    13,
+    323,
+    63759,
+    825,
+    3526,
+    1378,
+    7739,
+    32417,
+    16183,
+    32488,
+    817,
+    1042,
+    0
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Call me at (555) 123-4567 or email john.doe@example.com.",
+  "spoken": "Call me at, five hundred and fifty five, one hundred and twenty three-four thousand five hundred and sixty seven or email john dot doe at example dot com.",
+  "raw": "Call me at, 555, 123-4567 or email john.doe@example.com.",
+  "chunks": [
+   "Call me at, five hundred and fifty five, one hundred and twenty three-four thousand five hundred and sixty seven or email john dot doe at example dot com."
+  ],
+  "ids": [
+   [
+    7220,
+    752,
+    518,
+    11,
+    4236,
+    7739,
+    323,
+    32417,
+    4236,
+    11,
+    825,
+    7739,
+    323,
+    17073,
+    2326,
+    41017,
+    16183,
+    4236,
+    7739,
+    323,
+    52374,
+    8094,
+    476,
+    2551,
+    39642,
+    12756,
+    98453,
+    518,
+    3110,
+    12756,
+    469,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Version V0.8.1 is out — finally — and it's 2x faster than v0.7?",
+  "spoken": "Version V zero point eight point one is out, finally, and it's two x faster than v zero point seven?",
+  "raw": "Version V 0 point 8 point 1 is out, finally, and it's 2x faster than v 0 point 7?",
+  "chunks": [
+   "Version V zero point eight point one is out, finally, and it's two x faster than v zero point seven?"
+  ],
+  "ids": [
+   [
+    5637,
+    647,
+    7168,
+    1459,
+    8063,
+    1459,
+    825,
+    374,
+    700,
+    11,
+    5499,
+    11,
+    323,
+    432,
+    594,
+    1378,
+    856,
+    10596,
+    1091,
+    348,
+    7168,
+    1459,
+    8094,
+    30
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "[joyful] We won the grant <laugh> I can (((hardly))) believe it!",
+  "spoken": "[joyful] We won the grant <laugh> I can (((hardly))) believe it!",
+  "raw": "[joyful] We won the grant <laugh> I can (((hardly))) believe it!",
+  "chunks": [
+   "[joyful] We won the grant <laugh> I can (((hardly))) believe it!"
+  ],
+  "ids": [
+   [
+    3809,
+    2253,
+    1262,
+    60,
+    1205,
+    2765,
+    279,
+    13198,
+    366,
+    4260,
+    7443,
+    29,
+    358,
+    646,
+    11600,
+    18703,
+    398,
+    7705,
+    4411,
+    432,
+    0
+   ]
+  ],
+  "tag": true
+ },
+ {
+  "text": "The ratio α/β ≈ 0.5, and x² + y² = r² holds for all x ∈ ℝ.",
+  "spoken": "The ratio alpha slash beta approximately equals zero point five, and x two plus y two equals r two holds for all x in R.",
+  "raw": "The ratio alpha / beta approximately equals 0.5, and x 2 + y 2 equals r 2 holds for all x in R.",
+  "chunks": [
+   "The ratio alpha slash beta approximately equals zero point five, and x two plus y two equals r two holds for all x in R."
+  ],
+  "ids": [
+   [
+    785,
+    11341,
+    8287,
+    36626,
+    13440,
+    13187,
+    16819,
+    7168,
+    1459,
+    4236,
+    11,
+    323,
+    856,
+    1378,
+    5519,
+    379,
+    1378,
+    16819,
+    435,
+    1378,
+    9982,
+    369,
+    678,
+    856,
+    304,
+    431,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "She said \"it's 50\" wide\" and left...",
+  "spoken": "She said “it's fifty” wide\" and left.",
+  "raw": "She said \"it's 50\" wide\" and left.",
+  "chunks": [
+   "She said “it's fifty” wide\" and left."
+  ],
+  "ids": [
+   [
+    7941,
+    1053,
+    1036,
+    275,
+    594,
+    32417,
+    854,
+    6884,
+    1,
+    323,
+    2115,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Wait... what? 100%!",
+  "spoken": "Wait, what? one hundred percent!",
+  "raw": "Wait, what? 100%!",
+  "chunks": [
+   "Wait, what? one hundred percent!"
+  ],
+  "ids": [
+   [
+    14190,
+    11,
+    1128,
+    30,
+    825,
+    7739,
+    3266,
+    0
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "It costs 5 dollars (approximately) [citation needed] <b>bold</b>.",
+  "spoken": "It costs five dollars, approximately, citation needed, b,bold, slash b.",
+  "raw": "It costs 5 dollars, approximately, citation needed, b,bold, /b.",
+  "chunks": [
+   "It costs five dollars, approximately, citation needed, b,bold, slash b."
+  ],
+  "ids": [
+   [
+    2132,
+    7049,
+    4236,
+    11192,
+    11,
+    13187,
+    11,
+    44377,
+    4362,
+    11,
+    293,
+    8402,
+    813,
+    11,
+    36626,
+    293,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Temperatures range from -5°C to 30°C in 2024.",
+  "spoken": "Temperatures range from minus five degrees Celsius to thirty degrees Celsius in twenty twenty four.",
+  "raw": "Temperatures range from -5°C to 30°C in 2024.",
+  "chunks": [
+   "Temperatures range from minus five degrees Celsius to thirty degrees Celsius in twenty twenty four."
+  ],
+  "ids": [
+   [
+    21988,
+    712,
+    2789,
+    2088,
+    504,
+    27283,
+    4236,
+    12348,
+    61347,
+    311,
+    26127,
+    12348,
+    61347,
+    304,
+    17073,
+    17073,
+    3040,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "The U.S.A. and the U.K. signed the treaty in 1998; it took effect in the 1990s.",
+  "spoken": "The USA and the UK signed the treaty in nineteen ninety eight; it took effect in the nineteen nineties.",
+  "raw": "The U.S.A. and the U.K. signed the treaty in 1998; it took effect in the 1990s.",
+  "chunks": [
+   "The USA and the UK signed the treaty in nineteen ninety eight; it took effect in the nineteen nineties."
+  ],
+  "ids": [
+   [
+    785,
+    7279,
+    323,
+    279,
+    6424,
+    8499,
+    279,
+    37897,
+    304,
+    93835,
+    77876,
+    8063,
+    26,
+    432,
+    3867,
+    2456,
+    304,
+    279,
+    93835,
+    19550,
+    25559,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "line one\nline two\n\nline three",
+  "spoken": "Line one line two line three.",
+  "raw": "Line one line two line three.",
+  "chunks": [
+   "Line one line two line three."
+  ],
+  "ids": [
+   [
+    2460,
+    825,
+    1555,
+    1378,
+    1555,
+    2326,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Room 101, Floor 3rd, Building B-12.",
+  "spoken": "Room one hundred and one, Floor third, Building B-twelve.",
+  "raw": "Room 101, Floor 3rd, Building B-12.",
+  "chunks": [
+   "Room one hundred and one, Floor third, Building B-twelve."
+  ],
+  "ids": [
+   [
+    14003,
+    825,
+    7739,
+    323,
+    825,
+    11,
+    16581,
+    4843,
+    11,
+    16858,
+    425,
+    97562,
+    21210,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Is it 42? Yes!",
+  "spoken": "Is it forty two? Yes!",
+  "raw": "Is it 42? Yes!",
+  "chunks": [
+   "Is it forty two? Yes!"
+  ],
+  "ids": [
+   [
+    3872,
+    432,
+    35398,
+    1378,
+    30,
+    7414,
+    0
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Visit https://kittenml.com/docs?page=2 for more.",
+  "spoken": "Visit HTTPS colon slash slash kittenml dot com slash DOCS question mark PAGE equals two for more.",
+  "raw": "Visit https://kittenml.com/docs?page equals 2 for more.",
+  "chunks": [
+   "Visit HTTPS colon slash slash kittenml dot com slash DOCS question mark PAGE equals two for more."
+  ],
+  "ids": [
+   [
+    26218,
+    61044,
+    14889,
+    36626,
+    36626,
+    76657,
+    1014,
+    12756,
+    469,
+    36626,
+    9319,
+    6412,
+    3405,
+    1868,
+    25040,
+    16819,
+    1378,
+    369,
+    803,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "¿Dónde está la biblioteca? Está a 200 metros.",
+  "spoken": "¿Dónde está la biblioteca? Está a two hundred metros.",
+  "raw": "¿Dónde está la biblioteca? Está a 200 metros.",
+  "chunks": [
+   "¿Dónde está la biblioteca? Está a two hundred metros."
+  ],
+  "ids": [
+   [
+    30182,
+    35,
+    1794,
+    42341,
+    15466,
+    1187,
+    43515,
+    64390,
+    30,
+    136473,
+    264,
+    1378,
+    7739,
+    75478,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Le café coûte 3,50 € à Paris.",
+  "spoken": "Le café coûte three,fifty euro à Paris.",
+  "raw": "Le café coûte 3,50 € à Paris.",
+  "chunks": [
+   "Le café coûte three,fifty euro à Paris."
+  ],
+  "ids": [
+   [
+    2304,
+    51950,
+    1062,
+    29772,
+    665,
+    2326,
+    17077,
+    38624,
+    17672,
+    3784,
+    12095,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "日本語のテキストです。",
+  "spoken": "日本語のテキストです。.",
+  "raw": "日本語のテキストです。.",
+  "chunks": [
+   "日本語のテキストです。."
+  ],
+  "ids": [
+   [
+    101059,
+    102819,
+    15767,
+    56833,
+    61803,
+    70534,
+    37541,
+    1773,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Emoji test 😀 is fun 🎉.",
+  "spoken": "Emoji test 😀 is fun 🎉.",
+  "raw": "Emoji test 😀 is fun 🎉.",
+  "chunks": [
+   "Emoji test 😀 is fun 🎉."
+  ],
+  "ids": [
+   [
+    92731,
+    1273,
+    90316,
+    374,
+    2464,
+    11162,
+    236,
+    231,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. ",
+  "spoken": "First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here.",
+  "raw": "First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here.",
+  "chunks": [
+   "First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here.",
+   "First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here. First sentence is here."
+  ],
+  "ids": [
+   [
+    5338,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13
+   ],
+   [
+    5338,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13,
+    5512,
+    11652,
+    374,
+    1588,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "This is a very long sentence that goes on and on, with many clauses, separated by commas, and semicolons; it keeps going without a full stop for a long while, because we want to test the clause splitter, which breaks at the last comma before the limit, and then continues, and continues, and continues until the end of the line which is quite far away from the beginning, really far away indeed, honestly.",
+  "spoken": "This is a very long sentence that goes on and on, with many clauses, separated by commas, and semicolons; it keeps going without a full stop for a long while, because we want to test the clause splitter, which breaks at the last comma before the limit, and then continues, and continues, and continues until the end of the line which is quite far away from the beginning, really far away indeed, honestly.",
+  "raw": "This is a very long sentence that goes on and on, with many clauses, separated by commas, and semicolons; it keeps going without a full stop for a long while, because we want to test the clause splitter, which breaks at the last comma before the limit, and then continues, and continues, and continues until the end of the line which is quite far away from the beginning, really far away indeed, honestly.",
+  "chunks": [
+   "This is a very long sentence that goes on and on, with many clauses, separated by commas, and semicolons; it keeps going without a full stop for a long while, because we want to test the clause splitter, which breaks at the last comma before the limit, and then continues, and continues, and continues until the end of the line which is quite far away from the beginning, really far away indeed, honestly."
+  ],
+  "ids": [
+   [
+    1986,
+    374,
+    264,
+    1602,
+    1293,
+    11652,
+    429,
+    5780,
+    389,
+    323,
+    389,
+    11,
+    448,
+    1657,
+    49098,
+    11,
+    18663,
+    553,
+    76602,
+    11,
+    323,
+    5234,
+    26463,
+    2382,
+    26,
+    432,
+    13598,
+    2087,
+    2041,
+    264,
+    2480,
+    2936,
+    369,
+    264,
+    1293,
+    1393,
+    11,
+    1576,
+    582,
+    1366,
+    311,
+    1273,
+    279,
+    21647,
+    72986,
+    11,
+    892,
+    18303,
+    518,
+    279,
+    1537,
+    31683,
+    1573,
+    279,
+    3930,
+    11,
+    323,
+    1221,
+    9539,
+    11,
+    323,
+    9539,
+    11,
+    323,
+    9539,
+    3080,
+    279,
+    835,
+    315,
+    279,
+    1555,
+    892,
+    374,
+    5008,
+    3041,
+    3123,
+    504,
+    279,
+    7167,
+    11,
+    2167,
+    3041,
+    3123,
+    12824,
+    11,
+    26044,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "<sigh> I don't know. [sad] Maybe tomorrow <pause> or the day after.",
+  "spoken": "<sigh> I don't know. [sad] Maybe tomorrow <pause> or the day after.",
+  "raw": "<sigh> I don't know. [sad] Maybe tomorrow <pause> or the day after.",
+  "chunks": [
+   "<sigh> I don't know. [sad] Maybe tomorrow <pause> or the day after."
+  ],
+  "ids": [
+   [
+    44047,
+    1090,
+    29,
+    358,
+    1513,
+    944,
+    1414,
+    13,
+    508,
+    82114,
+    60,
+    10696,
+    16577,
+    366,
+    27448,
+    29,
+    476,
+    279,
+    1899,
+    1283,
+    13
+   ]
+  ],
+  "tag": true
+ },
+ {
+  "text": "THE END",
+  "spoken": "THE END.",
+  "raw": "THE END.",
+  "chunks": [
+   "THE END."
+  ],
+  "ids": [
+   [
+    17229,
+    11176,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "mr. o'neil's car — a 1967 Mustang — sold for $45k.",
+  "spoken": "Mr. o'neil's car, a nineteen sixty seven Mustang, sold for dollar forty five k.",
+  "raw": "Mr. o'neil's car, a 1967 Mustang, sold for $45k.",
+  "chunks": [
+   "Mr. o'neil's car, a nineteen sixty seven Mustang, sold for dollar forty five k."
+  ],
+  "ids": [
+   [
+    12275,
+    13,
+    297,
+    6,
+    811,
+    321,
+    594,
+    1803,
+    11,
+    264,
+    93835,
+    52374,
+    8094,
+    52779,
+    11,
+    6088,
+    369,
+    17692,
+    35398,
+    4236,
+    595,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Pay 1/2 now and 3/4 later; 0.001 is small; 1e-5 is smaller.",
+  "spoken": "Pay one half now and three quarters later; zero point zero zero one is small; one e-five is smaller.",
+  "raw": "Pay 1/2 now and 3/4 later; 0.001 is small; 1e-5 is smaller.",
+  "chunks": [
+   "Pay one half now and three quarters later; zero point zero zero one is small; one e-five is smaller."
+  ],
+  "ids": [
+   [
+    20595,
+    825,
+    4279,
+    1431,
+    323,
+    2326,
+    31473,
+    2937,
+    26,
+    7168,
+    1459,
+    7168,
+    7168,
+    825,
+    374,
+    2613,
+    26,
+    825,
+    384,
+    35299,
+    374,
+    9155,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Chapter IV: The Return of the King, pages 12-15.",
+  "spoken": "Chapter IV: The Return of the King, pages twelve-fifteen.",
+  "raw": "Chapter IV: The Return of the King, pages 12-15.",
+  "chunks": [
+   "Chapter IV: The Return of the King, pages twelve-fifteen."
+  ],
+  "ids": [
+   [
+    25020,
+    16824,
+    25,
+    576,
+    3411,
+    315,
+    279,
+    6210,
+    11,
+    6816,
+    29235,
+    2220,
+    333,
+    14901,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "a = b + c ^ 2",
+  "spoken": "A equals b plus c to the two.",
+  "raw": "A equals b + c to the 2.",
+  "chunks": [
+   "A equals b plus c to the two."
+  ],
+  "ids": [
+   [
+    32,
+    16819,
+    293,
+    5519,
+    272,
+    311,
+    279,
+    1378,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "\"Quoted text,\" he said. 'Single quotes' too.",
+  "spoken": "“Quoted text,” he said. 'Single quotes' too.",
+  "raw": "\"Quoted text,\" he said. 'Single quotes' too.",
+  "chunks": [
+   "“Quoted text,” he said. 'Single quotes' too."
+  ],
+  "ids": [
+   [
+    2073,
+    2183,
+    9253,
+    1467,
+    2419,
+    566,
+    1053,
+    13,
+    364,
+    10888,
+    17194,
+    6,
+    2238,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "Q3 revenue was $4.2B, up 15% YoY.",
+  "spoken": "Q three revenue was four point two billion dollars, up fifteen percent YoY.",
+  "raw": "Q3 revenue was $4.2B, up 15% YoY.",
+  "chunks": [
+   "Q three revenue was four point two billion dollars, up fifteen percent YoY."
+  ],
+  "ids": [
+   [
+    48,
+    2326,
+    12957,
+    572,
+    3040,
+    1459,
+    1378,
+    7094,
+    11192,
+    11,
+    705,
+    36655,
+    3266,
+    43088,
+    56,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "  leading and trailing spaces  ",
+  "spoken": "Leading and trailing spaces.",
+  "raw": "Leading and trailing spaces.",
+  "chunks": [
+   "Leading and trailing spaces."
+  ],
+  "ids": [
+   [
+    69750,
+    323,
+    27748,
+    12621,
+    13
+   ]
+  ],
+  "tag": false
+ },
+ {
+  "text": "{emo: 1}",
+  "ids_raw": [
+   90,
+   6726,
+   25,
+   220,
+   16,
+   92
+  ]
+ },
+ {
+  "text": "<|speech_start|>hi<think>x</think>[START]",
+  "ids_raw": [
+   151669,
+   6023,
+   151667,
+   87,
+   151668,
+   151673
+  ]
+ },
+ {
+  "text": "  multiple   spaces\t\ttabs\r\nCRLF",
+  "ids_raw": [
+   220,
+   5248,
+   256,
+   12621,
+   197,
+   3244,
+   3435,
+   319,
+   34,
+   80658
+  ]
+ },
+ {
+  "text": "naïve café Ünïcödé — ‘quotes’",
+  "ids_raw": [
+   3376,
+   37572,
+   586,
+   51950,
+   30512,
+   77,
+   37572,
+   66,
+   2956,
+   128505,
+   1959,
+   3369,
+   53282,
+   527
+  ]
+ }
+]

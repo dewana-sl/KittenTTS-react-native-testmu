@@ -36,6 +36,25 @@ Main flow:
   `tests/kitten-tts-2.test.js` can test them with a fake `fetch`. Voices, models
   and API error codes are strings because the API adds them over time: do not
   validate them client-side.
+- `src/KittenTTS2OnDevice.ts` / `.web.ts`: Kitten TTS 2 on the device.
+  `KittenTTS.create()` returns one for a repository such as
+  `'KittenML/kitten-tts-2'`. The native file downloads the files
+  (`src/kittentts2/BundleDownloader.ts`, sizes and SHA-256 from `manifest.json`)
+  and opens onnxruntime-react-native; the web file throws. Everything else is in
+  `src/kittentts2/` and runs in Node: `KittenTTS2OnDeviceBase.ts` (the Python
+  package's `generate`/`_synthesize`), `LanguageModel.ts` (one graph run per
+  token; the KV cache stays in JS and goes in as offset-0 views, because the RN
+  binding reads a tensor from the start of its buffer), `AudioDecoder.ts`
+  (s3gen flow + HiFT), `sampling.ts` (`logits.py` in the same order),
+  `text.ts` (`text.py`), `normalizer/` (kitten-text-processing's English FST
+  normalizer, decoding order and float32 rounding kept as they are),
+  `Tokenizer.ts` (Qwen2 byte-level BPE) and `bundle.ts` (manifest and
+  voices.bin). Keep the ports line-for-line with the Python package: text and
+  token ids must match it, which `tests/live/kitten-tts-2-on-device.live.test.js`
+  checks against `tests/fixtures/kitten-tts-2-text.json`.
+- `tools/kitten-tts-2-onnx/`: the Python exporter for those files (`export.py`)
+  and a parity check against the Python package (`check.py`). Not shipped in the
+  npm package.
 - `src/KittenModel.ts`: model names, download URLs, sizes, speed priors.
 - `src/KittenVoice.ts`: voice enum and display helpers.
 - `src/loader/ModelDownloader.ts`: model cache and Hugging Face downloads.
@@ -62,7 +81,10 @@ npm test
 ```
 
 `npm run test:live` runs `tests/live/` against the real Kitten API. It is
-skipped unless `KITTENML_API_KEY` is set, and it makes billed requests. Never
+skipped unless `KITTENML_API_KEY` is set, and it makes billed requests. The
+on-device Kitten TTS 2 live tests need `KITTEN_TTS_2_ONNX` pointing at an
+exported folder and `onnxruntime-node` installed (`npm install --no-save
+onnxruntime-node`); they are skipped otherwise. Never
 commit a key, and keep credentials in runtime-private (`#`) fields so a logged
 or serialised instance cannot leak them.
 

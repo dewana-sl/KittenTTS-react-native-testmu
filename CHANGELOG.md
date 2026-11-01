@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Added Kitten TTS 2 on the device:
+  `KittenTTS.create({ model: 'KittenML/kitten-tts-2' })` downloads about 2 GB of
+  ONNX files on first use and returns a `KittenTTS2OnDevice` with the Python
+  package's calls: the 115 built-in voices, expression tags, presets, sampling
+  controls, `advanced` options, `normalizeText()` and chunked streaming. The text
+  normalizer, tokenizer, prompt and sampler are ports of the Python package's and
+  produce the same token ids. Runs on iOS and Android through ONNX Runtime on the
+  CPU, with `precision: 'int8'` (the default, about 2.5 times faster) or
+  `'float32'`. `tools/kitten-tts-2-onnx` builds the files from the model
+  repository. Voice cloning on the device and browsers are not supported yet.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
