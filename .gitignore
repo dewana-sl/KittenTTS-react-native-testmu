@@ -4,6 +4,7 @@ node_modules/
 # Native build outputs
 android/.gradle/
 android/build/
+android/.cxx/
 android/app/build/
 ios/Pods/
 ios/build/

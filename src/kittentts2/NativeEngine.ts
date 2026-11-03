@@ -5,8 +5,17 @@ import { type AudioDecoderLike, type DecoderConditioning, applyTrimFade, decoder
 import { type LanguageModelTokens, type TokenGenerator, cancelled } from './LanguageModel';
 import type { Random, SamplingSettings } from './sampling';
 
-interface NativeMLX {
+/**
+ * The SDK's native engines for Kitten TTS 2: MLX on iOS (ios/KittenTTS2MLXEngine.swift)
+ * and ggml on Android (android/src/main/cpp/kittentts2). Both run the language
+ * model's token loop and sampler and the audio decoder natively, with the same calls.
+ */
+export type NativeBackend = 'mlx' | 'ggml';
+
+interface NativeEngineModule {
   isAvailable(): Promise<boolean>;
+  /** ggml only: "Vulkan0: <GPU name>", or "CPU" when there is no GPU it can use. */
+  device?(): Promise<string>;
   load(path: string, config: Record<string, number>): Promise<void>;
   generate(
     prompt: number[],
@@ -21,11 +30,20 @@ interface NativeMLX {
   unload(): Promise<void>;
 }
 
-const native = (): NativeMLX | undefined => NativeModules.KittenTTS2MLX as NativeMLX | undefined;
+const MODULE_NAMES: Record<NativeBackend, string> = { mlx: 'KittenTTS2MLX', ggml: 'KittenTTS2GGML' };
 
-/** Whether this app was built with the SDK's MLX module and runs on a GPU MLX supports. */
-export async function isMLXAvailable(): Promise<boolean> {
-  const module = native();
+const native = (backend: NativeBackend): NativeEngineModule | undefined =>
+  (NativeModules as Record<string, NativeEngineModule | undefined>)[MODULE_NAMES[backend]];
+
+function required(backend: NativeBackend): NativeEngineModule {
+  const module = native(backend);
+  if (!module) throw KittenTTSError.invalidArgument(`This app was built without the SDK's ${backend} engine.`);
+  return module;
+}
+
+/** Whether this app was built with the engine and the device can run it. */
+export async function isNativeAvailable(backend: NativeBackend): Promise<boolean> {
+  const module = native(backend);
   if (!module) return false;
   try {
     return await module.isAvailable();
@@ -34,23 +52,38 @@ export async function isMLXAvailable(): Promise<boolean> {
   }
 }
 
-/**
- * The language model on the GPU through MLX (ios/KittenTTS2MLXEngine.swift), a
- * port of the Python package's MLX backend. The whole token loop and the
- * sampler run natively; this only passes the prompt in and the tokens out.
- */
-export class MLXLanguageModel implements TokenGenerator {
-  private constructor(private readonly module: NativeMLX, private readonly tokens: LanguageModelTokens) {}
+/** Where the engine runs: MLX always on the GPU, ggml on the GPU when it found one it can use. */
+export async function nativeDevice(backend: NativeBackend): Promise<'gpu' | 'cpu'> {
+  const module = native(backend);
+  if (!module?.device) return 'gpu';
+  try {
+    return (await module.device()).startsWith('CPU') ? 'cpu' : 'gpu';
+  } catch {
+    return 'cpu';
+  }
+}
 
-  static async load(path: string, config: Record<string, number>, tokens: LanguageModelTokens): Promise<MLXLanguageModel> {
-    const module = native();
-    if (!module) throw KittenTTSError.invalidArgument('This app was built without the SDK\'s MLX module.');
+/**
+ * The language model in a native engine, a port of the Python package's MLX
+ * backend. The whole token loop and the sampler run natively; this only passes
+ * the prompt in and the tokens out.
+ */
+export class NativeLanguageModel implements TokenGenerator {
+  private constructor(private readonly module: NativeEngineModule, private readonly tokens: LanguageModelTokens) {}
+
+  static async load(
+    backend: NativeBackend,
+    path: string,
+    config: Record<string, number>,
+    tokens: LanguageModelTokens,
+  ): Promise<NativeLanguageModel> {
+    const module = required(backend);
     try {
       await module.load(path, config);
     } catch (error) {
-      throw KittenTTSError.inferenceFailed(`Could not load the MLX language model: ${errorMessage(error)}`, error);
+      throw KittenTTSError.inferenceFailed(`Could not load the ${backend} language model: ${errorMessage(error)}`, error);
     }
-    return new MLXLanguageModel(module, tokens);
+    return new NativeLanguageModel(module, tokens);
   }
 
   async generate(
@@ -92,21 +125,20 @@ export class MLXLanguageModel implements TokenGenerator {
 }
 
 /**
- * The audio decoder on the GPU through MLX (ios/KittenTTS2AudioDecoder.swift):
- * s3gen's flow and HiFT vocoder. Samples come back as base64 float32 bytes.
+ * The audio decoder in a native engine: s3gen's flow and HiFT vocoder. Samples
+ * come back as base64 float32 bytes.
  */
-export class MLXAudioDecoder implements AudioDecoderLike {
-  private constructor(private readonly module: NativeMLX, private readonly silenceToken: number) {}
+export class NativeAudioDecoder implements AudioDecoderLike {
+  private constructor(private readonly module: NativeEngineModule, private readonly silenceToken: number) {}
 
-  static async load(path: string, silenceToken: number): Promise<MLXAudioDecoder> {
-    const module = native();
-    if (!module) throw KittenTTSError.invalidArgument('This app was built without the SDK\'s MLX module.');
+  static async load(backend: NativeBackend, path: string, silenceToken: number): Promise<NativeAudioDecoder> {
+    const module = required(backend);
     try {
       await module.loadDecoder(path);
     } catch (error) {
-      throw KittenTTSError.inferenceFailed(`Could not load the MLX audio decoder: ${errorMessage(error)}`, error);
+      throw KittenTTSError.inferenceFailed(`Could not load the ${backend} audio decoder: ${errorMessage(error)}`, error);
     }
-    return new MLXAudioDecoder(module, silenceToken);
+    return new NativeAudioDecoder(module, silenceToken);
   }
 
   async decode(codes: readonly number[], conditioning: DecoderConditioning, random: Random): Promise<Float32Array | null> {

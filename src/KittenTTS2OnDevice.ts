@@ -9,7 +9,13 @@ import {
   defaultBaseURL,
 } from './kittentts2/KittenTTS2OnDeviceBase';
 import type { BundleManifest, KittenTTS2Backend, KittenTTS2Precision } from './kittentts2/bundle';
-import { MLXAudioDecoder, MLXLanguageModel, isMLXAvailable } from './kittentts2/MLXLanguageModel';
+import {
+  type NativeBackend,
+  NativeAudioDecoder,
+  NativeLanguageModel,
+  isNativeAvailable,
+  nativeDevice,
+} from './kittentts2/NativeEngine';
 import type { OrtModule } from './kittentts2/ort';
 import { KittenTTSError } from './KittenTTSError';
 
@@ -33,9 +39,11 @@ export interface KittenTTS2OnDeviceCreateOptions {
   /** ONNX Runtime threads. Defaults to 4. */
   ortNumThreads?: number;
   /**
-   * Where the language model runs, as the Python package's `backend=`: `'mlx'`
-   * on the GPU (iOS 17 and later, in an app built with the SDK's MLX module),
-   * `'onnx'` on the CPU, or `'auto'` (the default), MLX when it is available.
+   * Where the models run, as the Python package's `backend=`: `'mlx'` on the GPU
+   * (iOS 17 and later, in an app built with the SDK's MLX module), `'ggml'` on
+   * the GPU through Vulkan (Android, in an app built with the SDK's ggml engine;
+   * on the CPU when the phone has no GPU it can use), `'onnx'` on the CPU, or
+   * `'auto'` (the default): the native engine when it runs on the GPU, else ONNX.
    */
   backend?: KittenTTS2Backend;
   /**
@@ -70,7 +78,7 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
     onProgress?: ProgressHandler,
   ): Promise<KittenTTS2OnDevice> {
     const repository = checkRepository(options?.model);
-    const backend = await chooseBackend(options.backend ?? 'auto');
+    const engine = await chooseBackend(options.backend ?? 'auto');
     const root = options.storageDirectory ?? `${RNFS.DocumentDirectoryPath}/KittenTTS`;
     const directory = `${stripFileScheme(root)}/${repository.replace('/', '--')}`;
     const manifest = await downloadBundle({
@@ -78,7 +86,7 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       directory,
       force: options.forceRedownload ?? false,
       retries: Math.max(1, Math.floor(options.downloadRetries ?? 4)),
-      backend,
+      backend: engine.backend === 'onnx' ? 'onnx' : 'native',
     }, onProgress);
     const ort = (await import('onnxruntime-react-native')) as unknown as OrtModule;
     const state = await KittenTTS2OnDeviceBase.open({
@@ -93,44 +101,66 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       audioOutput: new AudioOutput(options.player),
       defaultVoice: options.defaultVoice,
       precision: options.precision,
-      mlx: backend === 'mlx' ? tokens => loadMLX(directory, manifest, tokens) : undefined,
+      native: engine.backend === 'onnx' ? undefined : {
+        backend: engine.backend,
+        device: engine.device,
+        precision: engine.backend === 'mlx' ? 'bfloat16' : engine.device === 'gpu' ? 'float32' : 'int8',
+        load: tokens => loadNative(engine.backend as NativeBackend, directory, manifest, tokens),
+      },
     });
     const tts = new KittenTTS2OnDevice(state);
-    if (backend === 'mlx') await tts.warmUp();
+    // The first call compiles the GPU kernels; do it now rather than in the app's first request.
+    if (engine.backend !== 'onnx') await tts.warmUp();
     return tts;
   }
 }
 
-async function chooseBackend(backend: KittenTTS2Backend): Promise<'mlx' | 'onnx'> {
-  if (backend === 'onnx') return 'onnx';
-  if (backend !== 'auto' && backend !== 'mlx') {
-    throw KittenTTSError.invalidArgument("backend must be 'auto', 'mlx' or 'onnx'.");
+interface Engine {
+  backend: 'mlx' | 'ggml' | 'onnx';
+  device: 'gpu' | 'cpu';
+}
+
+async function chooseBackend(backend: KittenTTS2Backend): Promise<Engine> {
+  if (backend === 'onnx') return { backend: 'onnx', device: 'cpu' };
+  if (backend !== 'auto' && backend !== 'mlx' && backend !== 'ggml') {
+    throw KittenTTSError.invalidArgument("backend must be 'auto', 'mlx', 'ggml' or 'onnx'.");
   }
-  if (await isMLXAvailable()) return 'mlx';
+  if (backend !== 'ggml' && await isNativeAvailable('mlx')) return { backend: 'mlx', device: 'gpu' };
+  if (backend !== 'mlx' && await isNativeAvailable('ggml')) {
+    const device = await nativeDevice('ggml');
+    if (device === 'gpu' || backend === 'ggml') return { backend: 'ggml', device };
+  }
   if (backend === 'mlx') {
     throw KittenTTSError.invalidArgument(
       "backend 'mlx' needs an iPhone or iPad with iOS 17 or later (not the simulator) and an app built " +
       'with the SDK\'s MLX module: the Expo plugin\'s mlx option, or KITTENTTS_MLX=1 pod install.',
     );
   }
-  return 'onnx';
+  if (backend === 'ggml') {
+    throw KittenTTSError.invalidArgument(
+      "backend 'ggml' needs Android 9 or later on arm64 (2018 phones and newer) or x86_64, and an app built " +
+      'with the SDK\'s ggml engine: the Expo plugin\'s ggml option, or kittentts.ggml=true in android/gradle.properties.',
+    );
+  }
+  return { backend: 'onnx', device: 'cpu' };
 }
 
-/** Both models on the GPU: the language model, then the audio decoder. */
-async function loadMLX(
+/** Both models in the native engine: the language model, then the audio decoder. */
+async function loadNative(
+  backend: NativeBackend,
   directory: string,
   manifest: BundleManifest,
-  tokens: Parameters<typeof MLXLanguageModel.load>[2],
-): Promise<{ languageModel: MLXLanguageModel; decoder: MLXAudioDecoder }> {
-  const mlx = manifest.mlx;
-  if (!mlx) {
-    throw KittenTTSError.invalidModelData('This model folder has no MLX weights; pass backend: \'onnx\'.');
+  tokens: Parameters<typeof NativeLanguageModel.load>[3],
+): Promise<{ languageModel: NativeLanguageModel; decoder: NativeAudioDecoder }> {
+  const files = manifest.native;
+  if (!files) {
+    throw KittenTTSError.invalidModelData(`This model folder has no ${backend} weights; pass backend: 'onnx'.`);
   }
-  const languageModel = await MLXLanguageModel.load(`${directory}/${mlx.weights}`, {
-    ...mlx.config,
+  const languageModel = await NativeLanguageModel.load(backend, `${directory}/${files.weights}`, {
+    ...files.config,
     head_start: manifest.lm.head_start,
   }, tokens);
-  const decoder = await MLXAudioDecoder.load(`${directory}/${mlx.decoder}`, manifest.decoder.silence_token);
+  const decoder = await NativeAudioDecoder.load(backend, `${directory}/${files.decoder}`, manifest.decoder.silence_token);
   return { languageModel, decoder };
 }
 

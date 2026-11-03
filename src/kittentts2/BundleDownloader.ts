@@ -21,8 +21,8 @@ export interface BundleDownloadOptions {
   directory: string;
   force: boolean;
   retries: number;
-  /** Which backend's files to download; files marked for the other are skipped. */
-  backend: 'mlx' | 'onnx';
+  /** Which files to download: ONNX Runtime's, or the native engines'. Files marked for the other are skipped. */
+  backend: 'native' | 'onnx';
 }
 
 /**

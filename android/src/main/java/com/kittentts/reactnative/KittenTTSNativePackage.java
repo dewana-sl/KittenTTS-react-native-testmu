@@ -14,6 +14,7 @@ public final class KittenTTSNativePackage implements ReactPackage {
   public List<NativeModule> createNativeModules(ReactApplicationContext reactContext) {
     List<NativeModule> modules = new ArrayList<>();
     modules.add(new OnnxruntimeModule(reactContext));
+    modules.add(new KittenTTS2GGMLModule(reactContext));
     return modules;
   }
 

@@ -20,6 +20,14 @@
   when it is built in. An iPhone 17 then generates faster than it speaks (a
   real-time factor of 0.55 to 0.79, against 1.8 on the CPU) and downloads
   1.25 GB instead of 2.02 GB.
+- Added a ggml backend for Kitten TTS 2 on Android 9+: the language model and
+  s3gen's audio decoder on the GPU through Vulkan, in C++ on the same weights
+  files as MLX, so it also downloads 1.25 GB. It is opt-in (`{ "ggml": true }` in
+  the Expo plugin, or `kittentts.ggml=true` in `android/gradle.properties`);
+  `backend: 'auto'` uses it when it finds a GPU it can use, and otherwise ONNX
+  Runtime. `tts.device` says `'gpu'` or `'cpu'`. In the Android emulator on an M5
+  Pro Mac it generates faster than it speaks (a real-time factor of about 0.8,
+  against about 4 on the CPU); it has not been measured on a phone yet.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,

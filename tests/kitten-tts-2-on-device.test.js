@@ -178,7 +178,7 @@ function identityGrammar() {
   return data;
 }
 
-async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [], mlx } = {}) {
+async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [], native } = {}) {
   const files = tokenizerFiles();
   const reader = {
     readText: async path => ({ 'vocab.json': files.vocab, 'merges.txt': files.merges, 'added_tokens.json': files.added })[path],
@@ -200,12 +200,12 @@ async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCal
     opened.push(model);
     return create(model, options);
   };
-  const state = await openWithoutGrammars({ reader, ort, precision, mlx });
+  const state = await openWithoutGrammars({ reader, ort, precision, native });
   return new KittenTTS2OnDeviceBase(state);
 }
 
 // The grammars copy their input, so normalization fails over to the cleaned text.
-async function openWithoutGrammars({ reader, ort, precision, mlx }) {
+async function openWithoutGrammars({ reader, ort, precision, native }) {
   const pako = require('pako');
   const grammar = pako.gzip(identityGrammar());
   const withGrammars = { ...reader, readBytes: async (path, offset, length) => (path === 'tagger' || path === 'verbalizer' ? grammar : reader.readBytes(path, offset, length)) };
@@ -217,7 +217,7 @@ async function openWithoutGrammars({ reader, ort, precision, mlx }) {
     sessionOptions: {},
     audioOutput: { play: async () => {}, stop: async () => {} },
     precision,
-    mlx,
+    native,
   });
 }
 
@@ -454,7 +454,7 @@ test('precision picks the language model graph', async () => {
   await assert.rejects(createTTS({ precision: 'float16' }), error => error.code === 'INVALID_ARGUMENT');
 });
 
-test('MLX models take the place of every ONNX graph', async () => {
+test('a native engine takes the place of every ONNX graph', async () => {
   const opened = [];
   const calls = [];
   const decoded = [];
@@ -473,8 +473,10 @@ test('MLX models take the place of every ONNX graph', async () => {
     async release() {},
   };
   let tokens;
-  const tts = await createTTS({ opened, mlx: async t => { tokens = t; return { languageModel: generator, decoder }; } });
+  const load = async t => { tokens = t; return { languageModel: generator, decoder }; };
+  const tts = await createTTS({ opened, native: { backend: 'mlx', device: 'gpu', precision: 'bfloat16', load } });
   assert.equal(tts.backend, 'mlx');
+  assert.equal(tts.device, 'gpu');
   assert.equal(tts.precision, 'bfloat16');
   assert.deepEqual(opened, [], `opened ${opened}`);
   assert.deepEqual(tokens, { speechEnd: TOKENS.speech_end_id, stop: TOKENS.stop_id, audioStart: AUDIO, audioEnd: AUDIO + 6561 });
@@ -484,6 +486,16 @@ test('MLX models take the place of every ONNX graph', async () => {
   assert.equal(calls[0].settings.temperature, 0.7);
   assert.deepEqual(calls[0].speaker, [2, 2, 2, 2]);
   assert.deepEqual(calls[0].prompt.slice(-1), [TOKENS.speech_start_id]);
+});
+
+test('ggml on the CPU reports where it runs, and ONNX Runtime the CPU', async () => {
+  const generator = { async generate() { return [4]; }, async release() {} };
+  const decoder = { async decode() { return new Float32Array(480); }, async release() {} };
+  const native = { backend: 'ggml', device: 'cpu', precision: 'int8', load: async () => ({ languageModel: generator, decoder }) };
+  const tts = await createTTS({ native });
+  assert.deepEqual([tts.backend, tts.device, tts.precision], ['ggml', 'cpu', 'int8']);
+  const onnx = await createTTS({});
+  assert.deepEqual([onnx.backend, onnx.device], ['onnx', 'cpu']);
 });
 
 test('repositories select the on-device model; API model IDs do not', () => {

@@ -78,14 +78,37 @@ def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger(
 def ortExtensionsEnabled = readPackageJsonField("onnxruntimeExtensionsEnabled") == "true"
 def useQnn = readPackageJsonField("onnxruntimeUseQnn") == "true"
 
+def kittenProperty(name) {
+  def value = rootProject.findProperty(name) ?: project.findProperty(name)
+  return value == null ? null : value.toString()
+}
+
+// Kitten TTS 2's ggml engine (src/main/cpp): opt-in, because it builds ggml with
+// its Vulkan shaders. kittentts.ggml=true in the app's android/gradle.properties
+// (the Expo plugin's ggml option) or KITTENTTS_GGML=1 turns it on.
+def ggmlEnabled = kittenProperty("kittentts.ggml") == "true" || System.getenv("KITTENTTS_GGML") == "1"
+// Local folders instead of the pinned downloads, for offline builds.
+def ggmlSources = [
+  "kittentts.ggmlSourceDir": "KITTENTTS2_GGML_SOURCE_DIR",
+  "kittentts.vulkanHeadersDir": "KITTENTTS2_VULKAN_HEADERS_DIR",
+  "kittentts.spirvHeadersDir": "KITTENTTS2_SPIRV_HEADERS_DIR",
+].collectEntries { key, variable -> [(variable): kittenProperty(key)] }.findAll { it.value }
+def buildsNative = autolinkedOnnxRuntimeProject == null || ggmlEnabled
+// With the engine, CMake starts in this folder, so ONNX Runtime's CMakeLists finds the AARs here.
+def onnxRuntimeExtractDir = ggmlEnabled ? projectDir : onnxRuntimeAndroidDir
+
 android {
   namespace "com.kittentts.reactnative"
   compileSdkVersion getExtOrDefault("compileSdkVersion", 36)
+  // The app's NDK, not a second one only this module would ask for.
+  if (rootProject.ext.has("ndkVersion")) {
+    ndkVersion rootProject.ext.get("ndkVersion")
+  }
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion", 24)
     targetSdkVersion getExtOrDefault("targetSdkVersion", 36)
-    if (autolinkedOnnxRuntimeProject == null) {
+    if (buildsNative) {
       externalNativeBuild {
         cmake {
           cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
@@ -100,6 +123,10 @@ android {
             "-DCMAKE_MODULE_LINKER_FLAGS=-Wl,-z,max-page-size=16384",
             "-DCMAKE_EXE_LINKER_FLAGS=-Wl,-z,max-page-size=16384"
           )
+          if (ggmlEnabled) {
+            arguments "-DKITTENTTS_ORT_ANDROID_DIR=${onnxRuntimeAndroidDir ?: ""}"
+            ggmlSources.each { variable, value -> arguments "-D${variable}=${value}" }
+          }
           abiFilters(*reactNativeArchitectures())
         }
       }
@@ -110,13 +137,17 @@ android {
     buildFeatures {
       prefab true
     }
+  }
 
+  if (buildsNative) {
     externalNativeBuild {
       cmake {
-        path new File(onnxRuntimeAndroidDir, "CMakeLists.txt")
+        path ggmlEnabled ? file("CMakeLists.txt") : new File(onnxRuntimeAndroidDir, "CMakeLists.txt")
       }
     }
+  }
 
+  if (autolinkedOnnxRuntimeProject == null) {
     packagingOptions {
       pickFirst "**/libc++_shared.so"
       pickFirst "**/libfbjni.so"
@@ -191,7 +222,7 @@ if (autolinkedOnnxRuntimeProject == null) {
         def file = it.absoluteFile
         copy {
           from zipTree(file)
-          into new File(onnxRuntimeAndroidDir, "build/${file.name}")
+          into new File(onnxRuntimeExtractDir, "build/${file.name}")
           include "**/*.h", "**/*.so"
         }
       }

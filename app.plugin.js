@@ -4,6 +4,7 @@ const PbxFile = require('xcode/lib/pbxFile');
 const {
   IOSConfig,
   withDangerousMod,
+  withGradleProperties,
   withPodfileProperties,
   withXcodeProject,
 } = require('expo/config-plugins');
@@ -25,6 +26,18 @@ module.exports = function withKittenTTS(config, props = {}) {
       if (!current || parseFloat(current) < parseFloat(MLX_IOS_DEPLOYMENT_TARGET)) {
         nextConfig.modResults['ios.deploymentTarget'] = MLX_IOS_DEPLOYMENT_TARGET;
       }
+      return nextConfig;
+    });
+  }
+
+  if (props.ggml) {
+    // android/build.gradle reads this and builds the ggml engine (Vulkan on the GPU).
+    config = withGradleProperties(config, (nextConfig) => {
+      const properties = nextConfig.modResults.filter(
+        (item) => !(item.type === 'property' && item.key === 'kittentts.ggml'),
+      );
+      properties.push({ type: 'property', key: 'kittentts.ggml', value: 'true' });
+      nextConfig.modResults = properties;
       return nextConfig;
     });
   }

@@ -8,10 +8,11 @@ Nothing leaves the device once the model is downloaded.
 
 It is a large model for a phone: a 1.25 to 2 GB download, and 2 to 2.7 GB of
 memory while it is loaded. On an iPhone 17 it generates speech faster than it
-plays when it runs on the GPU through [MLX](#run-it-on-the-gpu-mlx), and about
-1.8 times slower than it plays on the CPU, which is what Android and apps
-without MLX use. Play long text with `generateStreaming()`. For voice cloning,
-or when the download is too big, use
+plays when it runs on the GPU through [MLX](#ios-mlx), and about 1.8 times
+slower than it plays on the CPU, which is what apps without a native engine
+use. On Android it can run on the GPU through [ggml and Vulkan](#android-ggml),
+tested so far in the emulator. Play long text with `generateStreaming()`. For
+voice cloning, or when the download is too big, use
 [Kitten TTS 2 through the Kitten API](kitten-api.md) instead.
 
 ## Quick Start
@@ -50,10 +51,10 @@ downloads the files it lists:
 | --- | --- | --- |
 | `lm.onnx.data` | 1.43 GB | The speech language model's weights for ONNX Runtime, with its speaker head |
 | `lm-int8.onnx`, `lm.onnx` | 0.5 MB | Its graph, for each `precision` |
-| `lm-ternary.safetensors` | 954 MB | The same model as MLX reads it: the published packed checkpoint |
+| `lm-ternary.safetensors` | 954 MB | The same model as MLX and ggml read it: the published packed checkpoint |
 | `flow.onnx` | 482 MB | Codec tokens to mel spectrogram (s3gen's flow) |
 | `hift.onnx` | 83 MB | Mel spectrogram to 24 kHz audio (s3gen's HiFT vocoder) |
-| `decoder-mlx.safetensors` | 271 MB | The flow's and vocoder's weights as MLX reads them, in float16 |
+| `decoder-mlx.safetensors` | 271 MB | The flow's and vocoder's weights as MLX and ggml read them, in float16 |
 | `voices.bin` | 19 MB | The built-in voices, precomputed |
 | tokenizer and grammars | 5 MB | Qwen's tokenizer, kitten-text-processing's English grammars |
 
@@ -69,7 +70,7 @@ const tts = await KittenTTS.create({
 ```
 
 A device downloads one copy of each model, for the backend it uses: 1.25 GB in
-all with MLX, 2.02 GB with ONNX Runtime. Files already on the device,
+all with MLX or ggml, 2.02 GB with ONNX Runtime. Files already on the device,
 at the size and SHA-256 the manifest lists, are not downloaded again, and an
 interrupted download resumes at the next file. `forceRedownload: true` deletes
 them first. They live under
@@ -144,9 +145,26 @@ for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
 `generate()` waits for every chunk and joins them with short pauses, trimming
 each chunk's edge silence, as the Python package does.
 
-## Run It On The GPU (MLX)
+## Run It On The GPU
 
-On iOS, Kitten TTS 2 can run on the GPU through
+Both platforms have a native engine that runs the language model and the audio
+decoder on the GPU, built into the app only when you ask. The calls are the
+same; `backend` decides, like the Python package's `backend=`:
+
+```tsx
+const tts = await KittenTTS.create({ model: 'KittenML/kitten-tts-2' });      // 'auto': the native engine, on the GPU
+await KittenTTS.create({ model: 'KittenML/kitten-tts-2', backend: 'onnx' }); // always ONNX Runtime, on the CPU
+await KittenTTS.create({ model: 'KittenML/kitten-tts-2', backend: 'mlx' });  // iOS; throws where MLX is missing
+await KittenTTS.create({ model: 'KittenML/kitten-tts-2', backend: 'ggml' }); // Android; throws where ggml is missing
+console.log(tts.backend, tts.device); // 'mlx' 'gpu', 'ggml' 'gpu', 'ggml' 'cpu' or 'onnx' 'cpu'
+```
+
+`create()` runs one short generation before it returns, so the GPU kernels
+compile there and not in your first call.
+
+### iOS: MLX
+
+Kitten TTS 2 runs on the GPU through
 [MLX](https://github.com/ml-explore/mlx-swift), as the Python package's
 `backend="mlx"` runs its language model on a Mac:
 
@@ -158,11 +176,10 @@ On iOS, Kitten TTS 2 can run on the GPU through
   0.026 and the waveform within 0.004.
 
 MLX needs iOS 17 or later and a real device; the iOS simulator lacks the GPU
-features it uses. `create()` runs one short generation before it returns, so
-the GPU kernels compile there and not in your first call.
+features it uses.
 
-It is built into the app only when you ask, since it raises the minimum iOS
-version. With Expo, turn it on in the config plugin and rebuild:
+It raises the app's minimum iOS version, so it is opt-in. With Expo, turn it on
+in the config plugin and rebuild:
 
 ```json
 {
@@ -176,21 +193,53 @@ The plugin sets `"kittentts.mlx": "true"` and an iOS deployment target of 17.0
 in `ios/Podfile.properties.json`. In a bare React Native app, raise the
 Podfile's `platform :ios` to 17.0 and run `KITTENTTS_MLX=1 pod install`.
 
-`backend` then decides, like the Python package's `backend=`:
+### Android: ggml
 
-```tsx
-await KittenTTS.create({ model: 'KittenML/kitten-tts-2' });                     // 'auto': MLX when it is built in
-await KittenTTS.create({ model: 'KittenML/kitten-tts-2', backend: 'onnx' });    // always the CPU
-await KittenTTS.create({ model: 'KittenML/kitten-tts-2', backend: 'mlx' });     // throws where MLX is missing
-console.log(tts.backend); // 'mlx' or 'onnx'
+Android has no MLX. Kitten TTS 2 runs on the GPU through
+[ggml](https://github.com/ggml-org/ggml)'s Vulkan backend, with both models
+written for it in C++ (`android/src/main/cpp/kittentts2`) from the same weights
+files as MLX, so the download is the same 1.25 GB:
+
+- The language model: the ternary weights unpacked into ggml's 4-bit Q4_0 format
+  without rounding, float32 activations, and the token loop and the sampler in
+  C++. The prefill and every step match the Python package's MLX backend on the
+  same top tokens.
+- The audio decoder: s3gen's flow and HiFT vocoder. Against the Python package's
+  decoder with the same noise, the mel is within 0.014 and the waveform within
+  0.002.
+
+It adds about 25 MB of native code per ABI and needs Vulkan's shaders compiled at
+build time, so it is opt-in. With Expo, turn it on in the config plugin and rebuild:
+
+```json
+{
+  "expo": {
+    "plugins": [["@kittentts/react-native", { "ggml": true }]]
+  }
+}
 ```
+
+In a bare React Native app, add `kittentts.ggml=true` to `android/gradle.properties`.
+The first build downloads ggml (37 MB) and the Vulkan headers from GitHub, and
+takes a few minutes longer. It needs a C++ compiler for your own machine, for the
+step that generates the shaders.
+
+It runs on Android 9 or later, on arm64 phones from about 2018 on (the CPU needs
+dot-product and fp16 instructions) and on x86_64 emulators. 32-bit builds of the
+app leave it out. On a phone it cannot use, or whose GPU ggml rejects, `'auto'`
+falls back to ONNX Runtime, and `backend: 'ggml'` runs on the CPU if the phone
+has no usable GPU; it was no faster than ONNX Runtime there.
+
+The Android emulator's GPU works, and is a good place to develop, but its speed
+says little about phones: it is your computer's GPU behind a translation layer.
+It has not yet been measured on a phone.
 
 ## Speed, Precision And Memory
 
-Without MLX, the language model and the decoder run through ONNX Runtime on the
-CPU, one generation at a time. The language model's weights are the published
-ternary ones, exactly, packed at 4 bits as with MLX. `precision` decides how its
-activations are multiplied:
+Without a native engine, the language model and the decoder run through ONNX
+Runtime on the CPU, one generation at a time. The language model's weights are
+the published ternary ones, exactly, packed at 4 bits as with MLX. `precision`
+decides how its activations are multiplied:
 
 - `'int8'` (the default) quantizes them to int8 inside each matrix product.
   About 2.5 times faster.
@@ -242,13 +291,26 @@ during long chunks, so add the
 `com.apple.developer.kernel.increased-memory-limit` entitlement to keep it from
 being stopped. 6 GB phones may not have room.
 
+In the Android emulator, on the same 8 sentences, in a Release build on an M5 Pro
+Mac (an API 37 arm64 image with 6 cores and 8 GB of RAM):
+
+| Android emulator | Real-time factor | Words right (8 sentences) | Speaker similarity |
+| --- | --- | --- | --- |
+| `backend: 'ggml'`, on the GPU | 0.77 to 0.82 | all | 0.752 |
+| `backend: 'onnx'`, `'int8'`, 4 threads | 3.8 to 4.1 | all | 0.767 |
+
+Loading took about 11 s with ggml, warm-up included, and streaming a 29-second
+text delivered its first 18 seconds of audio after 11 to 13 s. ggml keeps about 1.3 GB of
+weights and caches in GPU memory (0.82 GB for the language model, 0.27 GB for the
+decoder, up to 0.18 GB for the attention cache) plus what a generation is
+working on.
+
 ## Not On The Device Yet
 
 - Voice cloning (`reference`): it needs the speech tokenizer, two speaker
   encoders and a transcription model on the device. Clone through the Kitten API.
 - Browsers: `create()` throws there; use the Kitten API.
 - The smaller `student_w4` decoder.
-- The GPU on Android: ONNX Runtime's mobile builds run both models on the CPU.
 
 ## Compared With The Python Package
 

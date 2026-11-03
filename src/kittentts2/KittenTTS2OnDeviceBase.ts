@@ -101,7 +101,8 @@ export interface KittenTTS2OnDeviceGenerateOptions {
 export interface KittenTTS2OnDeviceState {
   repository: string;
   manifest: BundleManifest;
-  backend: 'mlx' | 'onnx';
+  backend: 'mlx' | 'ggml' | 'onnx';
+  device: 'gpu' | 'cpu';
   precision: KittenTTS2Precision | 'bfloat16';
   languageModel: TokenGenerator;
   decoder: AudioDecoderLike;
@@ -149,8 +150,17 @@ export interface KittenTTS2OpenOptions {
   audioOutput: KittenTTS2Platform['audioOutput'];
   defaultVoice?: string;
   precision?: KittenTTS2Precision;
-  /** Loads the language model and the decoder on MLX instead of ONNX Runtime. */
-  mlx?: (tokens: LanguageModelTokens) => Promise<KittenTTS2Models>;
+  /** Loads the language model and the decoder in a native engine instead of ONNX Runtime. */
+  native?: KittenTTS2NativeEngine;
+}
+
+/** A native engine as `open()` takes it: MLX (iOS) or ggml (Android). */
+export interface KittenTTS2NativeEngine {
+  backend: 'mlx' | 'ggml';
+  device: 'gpu' | 'cpu';
+  /** How its language model multiplies: `'bfloat16'` on MLX, `'float32'` on ggml's GPU, `'int8'` on ggml's CPU. */
+  precision: KittenTTS2Precision | 'bfloat16';
+  load(tokens: LanguageModelTokens): Promise<KittenTTS2Models>;
 }
 
 interface Call {
@@ -161,9 +171,9 @@ interface Call {
 
 /**
  * Kitten TTS 2 on the device, with the Python package's calls: built-in voices,
- * expression tags, decoding presets and the same sampling pipeline. The audio
- * decoder runs through ONNX Runtime on the CPU; the language model too, or on
- * the GPU through MLX on iOS.
+ * expression tags, decoding presets and the same sampling pipeline. Both models
+ * run through ONNX Runtime on the CPU, or in the platform's native engine: MLX
+ * on iOS, ggml on Android, on the GPU.
  */
 export class KittenTTS2OnDeviceBase {
   /** The model repository this instance was created from, such as `'KittenML/kitten-tts-2'`. */
@@ -172,11 +182,13 @@ export class KittenTTS2OnDeviceBase {
   readonly sampleRate: number;
   /** The built-in voices. */
   readonly voices: readonly KittenTTS2Voice[];
-  /** Where the language model runs: `'mlx'` (the GPU) or `'onnx'` (the CPU). */
-  readonly backend: 'mlx' | 'onnx';
+  /** What runs the models: `'mlx'` (iOS), `'ggml'` (Android) or `'onnx'` (ONNX Runtime). */
+  readonly backend: 'mlx' | 'ggml' | 'onnx';
+  /** Where they run: `'gpu'` or `'cpu'`. ggml runs on the CPU on phones without a GPU it can use. */
+  readonly device: 'gpu' | 'cpu';
   /**
    * How the language model multiplies its activations: `'int8'` or `'float32'`
-   * on ONNX Runtime, `'bfloat16'` on MLX.
+   * on ONNX Runtime, `'bfloat16'` on MLX, `'float32'` on ggml's GPU and `'int8'` on its CPU.
    */
   readonly precision: KittenTTS2Precision | 'bfloat16';
 
@@ -190,6 +202,7 @@ export class KittenTTS2OnDeviceBase {
     this.model = state.repository;
     this.sampleRate = state.manifest.sample_rate;
     this.backend = state.backend;
+    this.device = state.device;
     this.precision = state.precision;
     this.voices = Object.freeze(state.voiceFile.entries.map(entry => Object.freeze({
       id: entry.name,
@@ -238,16 +251,16 @@ export class KittenTTS2OnDeviceBase {
     if (defaultVoice && !voiceFile.entries.some(entry => entry.name === defaultVoice)) {
       throw KittenTTSError.invalidArgument(`defaultVoice '${defaultVoice}' is not one of the model's voices.`);
     }
-    const precision = options.mlx ? 'bfloat16' : options.precision ?? manifest.lm.default_precision;
-    if (precision !== 'bfloat16' && !manifest.lm.graphs[precision]) {
+    const precision = options.native ? options.native.precision : options.precision ?? manifest.lm.default_precision;
+    if (!options.native && !manifest.lm.graphs[precision as KittenTTS2Precision]) {
       throw KittenTTSError.invalidArgument(`precision must be one of: ${Object.keys(manifest.lm.graphs).join(', ')}.`);
     }
     const graph = async (path: string) => ({
       model: await reader.graph(path),
       options: { ...options.sessionOptions, ...reader.graphOptions?.(path) },
     });
-    const models = options.mlx
-      ? await options.mlx(languageModelTokens(manifest))
+    const models = options.native
+      ? await options.native.load(languageModelTokens(manifest))
       : await KittenTTS2OnDeviceBase.loadModels(options.ort, {
         lm: await graph(manifest.lm.graphs[precision as KittenTTS2Precision]),
         flow: await graph(manifest.decoder.flow),
@@ -256,7 +269,8 @@ export class KittenTTS2OnDeviceBase {
     return {
       repository: options.repository,
       manifest,
-      backend: options.mlx ? 'mlx' : 'onnx',
+      backend: options.native ? options.native.backend : 'onnx',
+      device: options.native ? options.native.device : 'cpu',
       precision,
       tokenizer,
       normalizer,

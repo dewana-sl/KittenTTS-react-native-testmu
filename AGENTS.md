@@ -59,12 +59,24 @@ Main flow:
   vocoder (weights from `tools/kitten-tts-2-onnx/decoder_mlx.py`, float16 at
   rest, evaluated layer by layer to bound memory), `KittenTTS2MLXEngine.swift`
   runs both on its own queue, and `KittenTTS2MLXModule.m` exposes it to JS as
-  `KittenTTS2MLX` (used by `src/kittentts2/MLXLanguageModel.ts`). The podspec has no sources
+  `KittenTTS2MLX` (used by `src/kittentts2/NativeEngine.ts`). The podspec has no sources
   unless `KITTENTTS_MLX=1` or `"kittentts.mlx": "true"` in
   `ios/Podfile.properties.json` (the Expo plugin's `mlx` option), because MLX
   needs iOS 17 and pulls in mlx-swift through React Native's `spm_dependency`.
   MLX does not run in the iOS simulator: test it on a device. Building it needs
   Xcode's Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`).
+- `android/src/main/cpp/kittentts2/` and `KittenTTS2GGMLModule.java`: the opt-in
+  ggml backend, the same two models and calls as the MLX one, on the GPU through
+  Vulkan. `language_model.cpp` and `audio_decoder.cpp` build ggml graphs by hand
+  (ports of the Swift files), reading the same weights files; `sampler.cpp` ports
+  `sampling.ts`, `engine.cpp` holds the models and the token loop, `jni.cpp` is the
+  bridge. Built only with `kittentts.ggml=true` in `android/gradle.properties` (the
+  Expo plugin's `ggml` option): `android/build.gradle` then starts CMake in
+  `android/CMakeLists.txt`, which holds ONNX Runtime's JSI library and the engine.
+  `android/src/main/cpp/CMakeLists.txt` pins ggml and the Vulkan headers. Vulkan
+  has traps that only show on a GPU and in multi-row graphs: read "What a GPU needs
+  from the graphs" in `tools/kitten-tts-2-ggml/README.md` before changing a graph,
+  and recheck with `kt2check` (same folder) on a device or emulator.
 - `tools/kitten-tts-2-onnx/`: the Python exporter for those files (`export.py`)
   and a parity check against the Python package (`check.py`). Not shipped in the
   npm package.
