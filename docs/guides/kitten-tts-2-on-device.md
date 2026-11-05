@@ -56,6 +56,7 @@ downloads the files it lists:
 | `hift.onnx` | 83 MB | Mel spectrogram to 24 kHz audio (s3gen's HiFT vocoder) |
 | `decoder-mlx.safetensors` | 271 MB | The flow's and vocoder's weights as MLX and ggml read them, in float16 |
 | `voices.bin` | 19 MB | The built-in voices, precomputed |
+| `decoder-student_w4-mlx.safetensors`, `voices-student_w4.bin` | 115 MB | The one-step decoder and its voices, downloaded only when you ask for it |
 | tokenizer and grammars | 5 MB | Qwen's tokenizer, kitten-text-processing's English grammars |
 
 The files are built from the model repository by
@@ -305,12 +306,40 @@ weights and caches in GPU memory (0.82 GB for the language model, 0.27 GB for th
 decoder, up to 0.18 GB for the attention cache) plus what a generation is
 working on.
 
+## The One-Step Decoder
+
+`decoder: 'student_w4'` runs the Python package's optional distilled decoder on
+MLX: one flow step in place of two, in a narrower network with 4-bit weights and a
+shorter voice prompt (4 seconds in place of 10). The vocoder is the same. Other
+backends throw, for now.
+
+```tsx
+const tts = await KittenTTS.create({ model: 'KittenML/kitten-tts-2', decoder: 'student_w4' });
+console.log(tts.decoder, tts.availableDecoders); // 'student_w4' ['default', 'student_w4']
+```
+
+It is a choice for size, not for speed or quality. Measured on an iPhone 17, in a
+Release build, on the same 8 sentences:
+
+| iPhone 17, MLX | Decoder alone, real-time factor | Speaker similarity (lowest voice) | Download | Memory, usual and peak |
+| --- | --- | --- | --- | --- |
+| `'default'` | 0.11 to 0.13 | 0.752 (0.667) | 1.25 GB | 1.8 GiB, 2.2 GiB |
+| `'student_w4'` | 0.09 | 0.684 (0.459) | 1.08 GB | 1.7 GiB, 1.9 GiB |
+
+The words stay right, but it holds a voice less well, and some voices much less
+well; listen to the voices you use. The language model takes about 80% of the time
+of a generation, so a faster decoder hardly changes the overall speed: the two
+were within the phone's warming-up (0.54 to 0.74 for the default, 0.65 to 0.72 for
+the student). With the same noise, the mel is within 0.20 of the Python package's,
+about as far as torch's own output moves when its input changes by 1e-7: the 8-bit
+activations amplify rounding.
+
 ## Not On The Device Yet
 
 - Voice cloning (`reference`): it needs the speech tokenizer, two speaker
   encoders and a transcription model on the device. Clone through the Kitten API.
 - Browsers: `create()` throws there; use the Kitten API.
-- The smaller `student_w4` decoder.
+- The `student_w4` decoder on Android and on ONNX Runtime.
 
 ## Compared With The Python Package
 
@@ -320,7 +349,9 @@ working on.
 | `m.generate(text, voice="Bruno")` | `await tts.generate(text, 'Bruno')` |
 | `m.generate(text, preset="expressive", advanced={"seed": 1})` | `await tts.generate(text, { preset: 'expressive', advanced: { seed: 1 } })` |
 | `for chunk in m.generate_stream(text)` | `for await (const chunk of tts.generateStreaming(text))` |
+| `KittenTTS(repo, decoder="student_w4")` | `await KittenTTS.create({ model: repo, decoder: 'student_w4' })`, MLX only |
 | `m.available_voices` | `tts.availableVoices` |
+| `m.available_decoders` | `tts.availableDecoders` |
 | `m.normalize_text(text)` | `tts.normalizeText(text)` |
 | `m.sample_rate` | `tts.sampleRate` |
 | `backend="mlx"`, `"auto"` | `backend: 'mlx'`, `'auto'` (iOS, with the MLX module) |

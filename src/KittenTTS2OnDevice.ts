@@ -47,6 +47,13 @@ export interface KittenTTS2OnDeviceCreateOptions {
    */
   backend?: KittenTTS2Backend;
   /**
+   * Which decoder turns codec tokens into a mel spectrogram, as the Python
+   * package's `decoder=`: `'default'`, s3gen's flow in two steps, or
+   * `'student_w4'`, its distilled student in one step, with a smaller download
+   * and lower quality. The student runs on MLX only so far.
+   */
+  decoder?: string;
+  /**
    * How the language model multiplies on ONNX Runtime: `'int8'` activations,
    * about 2.5 times faster, or `'float32'`. Defaults to the model folder's choice, `'int8'`.
    */
@@ -79,6 +86,10 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
   ): Promise<KittenTTS2OnDevice> {
     const repository = checkRepository(options?.model);
     const engine = await chooseBackend(options.backend ?? 'auto');
+    const decoder = options.decoder ?? 'default';
+    if (decoder !== 'default' && engine.backend !== 'mlx') {
+      throw KittenTTSError.invalidArgument(`decoder '${decoder}' runs on MLX only so far; this device uses ${engine.backend}.`);
+    }
     const root = options.storageDirectory ?? `${RNFS.DocumentDirectoryPath}/KittenTTS`;
     const directory = `${stripFileScheme(root)}/${repository.replace('/', '--')}`;
     const manifest = await downloadBundle({
@@ -87,6 +98,7 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       force: options.forceRedownload ?? false,
       retries: Math.max(1, Math.floor(options.downloadRetries ?? 4)),
       backend: engine.backend === 'onnx' ? 'onnx' : 'native',
+      decoder,
     }, onProgress);
     const ort = (await import('onnxruntime-react-native')) as unknown as OrtModule;
     const state = await KittenTTS2OnDeviceBase.open({
@@ -101,11 +113,12 @@ export class KittenTTS2OnDevice extends KittenTTS2OnDeviceBase {
       audioOutput: new AudioOutput(options.player),
       defaultVoice: options.defaultVoice,
       precision: options.precision,
+      decoder,
       native: engine.backend === 'onnx' ? undefined : {
         backend: engine.backend,
         device: engine.device,
         precision: engine.backend === 'mlx' ? 'bfloat16' : engine.device === 'gpu' ? 'float32' : 'int8',
-        load: tokens => loadNative(engine.backend as NativeBackend, directory, manifest, tokens),
+        load: tokens => loadNative(engine.backend as NativeBackend, directory, manifest, decoder, tokens),
       },
     });
     const tts = new KittenTTS2OnDevice(state);
@@ -150,6 +163,7 @@ async function loadNative(
   backend: NativeBackend,
   directory: string,
   manifest: BundleManifest,
+  decoderName: string,
   tokens: Parameters<typeof NativeLanguageModel.load>[3],
 ): Promise<{ languageModel: NativeLanguageModel; decoder: NativeAudioDecoder }> {
   const files = manifest.native;
@@ -160,7 +174,8 @@ async function loadNative(
     ...files.config,
     head_start: manifest.lm.head_start,
   }, tokens);
-  const decoder = await NativeAudioDecoder.load(backend, `${directory}/${files.decoder}`, manifest.decoder.silence_token);
+  const weights = manifest.decoders?.[decoderName]?.weights ?? files.decoder;
+  const decoder = await NativeAudioDecoder.load(backend, `${directory}/${weights}`, manifest.decoder.silence_token);
   return { languageModel, decoder };
 }
 

@@ -61,7 +61,7 @@ def main():
     import torch
     from transformers import AutoTokenizer
 
-    from decoder_mlx import export_mlx_decoder
+    from decoder_mlx import export_mlx_decoder, export_student_decoder
     from decoder_onnx import export_flow, export_hift
     from lm_onnx import build_lm
     from voices_bundle import write_voices
@@ -89,6 +89,15 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(str(lm_dir))
     voices = write_voices(out / "voices.bin", repo_dir, config, tokenizer, codec)
 
+    # A student flow replaces only the flow, and has its own, shorter voice conditioning.
+    decoders = {}
+    for name, weights in config.get("decoders", {}).items():
+        print(f"decoder {name} ...", flush=True)
+        student = S3Codec(device="cpu", student_weights=repo_dir / weights)
+        decoders[name] = {"weights": f"decoder-{name}-mlx.safetensors", "voices": f"voices-{name}.bin", "cfm_steps": 1}
+        export_student_decoder(student.s3gen, repo_dir / weights, out / decoders[name]["weights"])
+        write_voices(out / decoders[name]["voices"], repo_dir, config, tokenizer, student, decoder=name)
+
     for name in ("vocab.json", "merges.txt", "added_tokens.json"):
         shutil.copyfile(lm_dir / name, out / name)
     # The native engines unpack the published ternary checkpoint themselves, as the Python package's MLX backend does.
@@ -101,7 +110,10 @@ def main():
 
     files = sorted(p for p in out.rglob("*") if p.is_file() and p.name != "manifest.json")
     only = {"lm.onnx": "onnx", "lm-int8.onnx": "onnx", "lm.onnx.data": "onnx", "flow.onnx": "onnx",
-            "hift.onnx": "onnx", "lm-ternary.safetensors": "native", "decoder-mlx.safetensors": "native"}
+            "hift.onnx": "onnx", "lm-ternary.safetensors": "native", "decoder-mlx.safetensors": "native",
+            **{entry["weights"]: "native" for entry in decoders.values()}}
+    decoder_of = {"decoder-mlx.safetensors": "default", "voices.bin": "default",
+                  **{entry[kind]: name for name, entry in decoders.items() for kind in ("weights", "voices")}}
     manifest = {
         "format": FORMAT,
         "version": 1,
@@ -121,18 +133,21 @@ def main():
                 "config": {key: lm_config[key] for key in (
                     "hidden_size", "num_hidden_layers", "num_attention_heads", "num_key_value_heads",
                     "head_dim", "rope_theta", "rms_norm_eps")}},
+        "decoders": decoders,
         "tokenizer": {"vocab": "vocab.json", "merges": "merges.txt", "added_tokens": "added_tokens.json"},
         "normalizer": {"version": kitten_text_processing.__version__,
                        "en": {"tagger": "text/en/tagger.fst.gz", "verbalizer": "text/en/verbalizer.fst.gz",
                               "post": "text/en/post.fst.gz"}},
         "voices": "voices.bin",
         "files": [{"path": p.relative_to(out).as_posix(), "size": p.stat().st_size, "sha256": sha256(p),
-                   **({"backend": only[p.name]} if p.name in only else {})}
+                   **({"backend": only[p.name]} if p.name in only else {}),
+                   **({"decoder": decoder_of[p.name]} if p.name in decoder_of else {})}
                   for p in files],
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     for backend in ("onnx", "native"):
-        total = sum(f["size"] for f in manifest["files"] if f.get("backend", backend) == backend)
+        total = sum(f["size"] for f in manifest["files"]
+                    if f.get("backend", backend) == backend and f.get("decoder", "default") == "default")
         print(f"{backend}: {total / 1e9:.2f} GB to download")
     print(f"{len(voices)} voices, {len(files)} files in {time.time() - start:.0f}s -> {out}")
 

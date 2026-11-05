@@ -4,7 +4,14 @@ import { KittenTTSError, errorMessage, isKittenTTSError } from '../KittenTTSErro
 import { KittenTTSResult } from '../KittenTTSResult';
 import { AudioDecoder, type AudioDecoderLike } from './AudioDecoder';
 import pako from 'pako';
-import { type BundleManifest, type KittenTTS2Precision, type VoiceData, VoiceFile } from './bundle';
+import {
+  type BundleManifest,
+  type KittenTTS2Precision,
+  type VoiceData,
+  VoiceFile,
+  checkDecoder,
+  decoderNames,
+} from './bundle';
 import { LanguageModel, type LanguageModelTokens, type TokenGenerator, cancelled } from './LanguageModel';
 import { Normalizer } from './normalizer/Normalizer';
 import type { OrtModule, OrtSessionOptions } from './ort';
@@ -104,6 +111,7 @@ export interface KittenTTS2OnDeviceState {
   backend: 'mlx' | 'ggml' | 'onnx';
   device: 'gpu' | 'cpu';
   precision: KittenTTS2Precision | 'bfloat16';
+  decoderName: string;
   languageModel: TokenGenerator;
   decoder: AudioDecoderLike;
   tokenizer: QwenTokenizer;
@@ -150,6 +158,8 @@ export interface KittenTTS2OpenOptions {
   audioOutput: KittenTTS2Platform['audioOutput'];
   defaultVoice?: string;
   precision?: KittenTTS2Precision;
+  /** Which decoder's voices to read: `'default'` or a name in the manifest's `decoders`. */
+  decoder?: string;
   /** Loads the language model and the decoder in a native engine instead of ONNX Runtime. */
   native?: KittenTTS2NativeEngine;
 }
@@ -191,6 +201,8 @@ export class KittenTTS2OnDeviceBase {
    * on ONNX Runtime, `'bfloat16'` on MLX, `'float32'` on ggml's GPU and `'int8'` on its CPU.
    */
   readonly precision: KittenTTS2Precision | 'bfloat16';
+  /** The decoder that turns codec tokens into a mel spectrogram: `'default'` or `'student_w4'`. */
+  readonly decoder: string;
 
   private readonly state: KittenTTS2OnDeviceState;
   private readonly voiceCache = new Map<string, Promise<VoiceData>>();
@@ -204,6 +216,7 @@ export class KittenTTS2OnDeviceBase {
     this.backend = state.backend;
     this.device = state.device;
     this.precision = state.precision;
+    this.decoder = state.decoderName;
     this.voices = Object.freeze(state.voiceFile.entries.map(entry => Object.freeze({
       id: entry.name,
       name: entry.name,
@@ -223,9 +236,17 @@ export class KittenTTS2OnDeviceBase {
     return Object.keys(this.state.manifest.decode_presets);
   }
 
+  /** Names accepted by `decoder`. */
+  get availableDecoders(): string[] {
+    return decoderNames(this.state.manifest);
+  }
+
   /** Load the tokenizer, grammars, voices and graphs. Shared by each platform's `create()`. */
   protected static async open(options: KittenTTS2OpenOptions): Promise<KittenTTS2OnDeviceState> {
     const { manifest, reader } = options;
+    const decoderName = options.decoder ?? 'default';
+    checkDecoder(manifest, decoderName);
+    const voicesPath = manifest.decoders?.[decoderName]?.voices ?? manifest.voices;
     let tokenizer: QwenTokenizer;
     let normalizer: Normalizer;
     let voiceFile: VoiceFile;
@@ -242,7 +263,7 @@ export class KittenTTS2OnDeviceBase {
         verbalizer: await grammar(en.verbalizer),
         post: en.post ? await grammar(en.post) : undefined,
       });
-      voiceFile = await VoiceFile.open((offset, length) => reader.readBytes(manifest.voices, offset, length));
+      voiceFile = await VoiceFile.open((offset, length) => reader.readBytes(voicesPath, offset, length));
     } catch (error) {
       if (isKittenTTSError(error)) throw error;
       throw KittenTTSError.invalidModelData(`Could not read the Kitten TTS 2 files: ${errorMessage(error)}`, error);
@@ -272,6 +293,7 @@ export class KittenTTS2OnDeviceBase {
       backend: options.native ? options.native.backend : 'onnx',
       device: options.native ? options.native.device : 'cpu',
       precision,
+      decoderName,
       tokenizer,
       normalizer,
       voiceFile,

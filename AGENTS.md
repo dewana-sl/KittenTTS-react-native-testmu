@@ -57,7 +57,10 @@ Main flow:
   package's `mlx/model.py` and `loader.py`, `KittenTTS2Sampler.swift` ports
   `sampling.ts`, `KittenTTS2AudioDecoder.swift` ports s3gen's flow and HiFT
   vocoder (weights from `tools/kitten-tts-2-onnx/decoder_mlx.py`, float16 at
-  rest, evaluated layer by layer to bound memory), `KittenTTS2MLXEngine.swift`
+  rest, evaluated layer by layer to bound memory), and the Python package's
+  one-step student flow with the same graph (`decoder: 'student_w4'`; its weights
+  file says which, and its layers take 8-bit activations),
+  `KittenTTS2MLXEngine.swift`
   runs both on its own queue, and `KittenTTS2MLXModule.m` exposes it to JS as
   `KittenTTS2MLX` (used by `src/kittentts2/NativeEngine.ts`). The podspec has no sources
   unless `KITTENTTS_MLX=1` or `"kittentts.mlx": "true"` in

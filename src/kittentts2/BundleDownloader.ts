@@ -2,7 +2,7 @@ import * as RNFS from 'react-native-fs';
 import { base64ToUint8Array } from '../audio/Base64';
 import { KittenTTSError, errorMessage, isKittenTTSError } from '../KittenTTSError';
 import type { DownloadProgressInfo, ProgressHandler } from '../loader/ModelDownloader';
-import { type BundleManifest, checkManifest } from './bundle';
+import { type BundleManifest, checkDecoder, checkManifest, filesFor } from './bundle';
 import type { KittenTTS2BundleReader } from './KittenTTS2OnDeviceBase';
 
 const MANIFEST = 'manifest.json';
@@ -23,6 +23,8 @@ export interface BundleDownloadOptions {
   retries: number;
   /** Which files to download: ONNX Runtime's, or the native engines'. Files marked for the other are skipped. */
   backend: 'native' | 'onnx';
+  /** Which decoder's files to download. Files marked for another are skipped. */
+  decoder: string;
 }
 
 /**
@@ -40,7 +42,8 @@ export async function downloadBundle(
 
   const manifest = await fetchManifest(options);
   const record = await readRecord(directory);
-  const files = manifest.files.filter(file => !file.backend || file.backend === options.backend);
+  checkDecoder(manifest, options.decoder);
+  const files = filesFor(manifest, options.backend, options.decoder);
   const missing: Array<{ path: string; size: number; sha256?: string }> = [];
   for (const file of files) {
     const stat = await RNFS.stat(`${directory}/${file.path}`).catch(() => null);

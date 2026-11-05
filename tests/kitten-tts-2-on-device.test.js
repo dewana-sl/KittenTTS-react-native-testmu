@@ -11,7 +11,7 @@ const { Random, sampleToken } = require('../lib/kittentts2/sampling');
 const text = require('../lib/kittentts2/text');
 const { QwenTokenizer } = require('../lib/kittentts2/Tokenizer');
 const { Graph, NoPathError } = require('../lib/kittentts2/normalizer/Graph');
-const { VoiceFile } = require('../lib/kittentts2/bundle');
+const { VoiceFile, filesFor } = require('../lib/kittentts2/bundle');
 const { decodeUTF8, encodeUTF8 } = require('../lib/kittentts2/utf8');
 
 // A tiny model with the real token layout, small enough to fake ONNX Runtime with.
@@ -178,13 +178,13 @@ function identityGrammar() {
   return data;
 }
 
-async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [], native } = {}) {
+async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCalls = [], flowCalls = [], precision, opened = [], native, decoder: decoderName } = {}) {
   const files = tokenizerFiles();
   const reader = {
     readText: async path => ({ 'vocab.json': files.vocab, 'merges.txt': files.merges, 'added_tokens.json': files.added })[path],
     readBytes: async (path, offset = 0, length) => {
-      const bin = voicesBin(voices);
-      return path === 'voices.bin' ? bin.slice(offset, length === undefined ? undefined : offset + length) : new Uint8Array();
+      const bin = voicesBin(path === 'voices-student.bin' ? ['Student'] : voices);
+      return path.startsWith('voices') ? bin.slice(offset, length === undefined ? undefined : offset + length) : new Uint8Array();
     },
     graph: async path => path,
   };
@@ -200,24 +200,25 @@ async function createTTS({ script = [1, 2, 3], voices = ['Bruno', 'Luna'], lmCal
     opened.push(model);
     return create(model, options);
   };
-  const state = await openWithoutGrammars({ reader, ort, precision, native });
+  const state = await openWithoutGrammars({ reader, ort, precision, native, decoder: decoderName });
   return new KittenTTS2OnDeviceBase(state);
 }
 
 // The grammars copy their input, so normalization fails over to the cleaned text.
-async function openWithoutGrammars({ reader, ort, precision, native }) {
+async function openWithoutGrammars({ reader, ort, precision, native, decoder }) {
   const pako = require('pako');
   const grammar = pako.gzip(identityGrammar());
   const withGrammars = { ...reader, readBytes: async (path, offset, length) => (path === 'tagger' || path === 'verbalizer' ? grammar : reader.readBytes(path, offset, length)) };
   return KittenTTS2OnDeviceBase.open({
     repository: 'KittenML/kitten-tts-2',
-    manifest: manifest(),
+    manifest: { ...manifest(), decoders: { student_w4: { weights: 'student.safetensors', voices: 'voices-student.bin', cfm_steps: 1 } } },
     reader: withGrammars,
     ort,
     sessionOptions: {},
     audioOutput: { play: async () => {}, stop: async () => {} },
     precision,
     native,
+    decoder,
   });
 }
 
@@ -496,6 +497,32 @@ test('ggml on the CPU reports where it runs, and ONNX Runtime the CPU', async ()
   assert.deepEqual([tts.backend, tts.device, tts.precision], ['ggml', 'cpu', 'int8']);
   const onnx = await createTTS({});
   assert.deepEqual([onnx.backend, onnx.device], ['onnx', 'cpu']);
+});
+
+test('a decoder has its own voices and files, and its name is checked', async () => {
+  const generator = { async generate() { return [4]; }, async release() {} };
+  const decoder = { async decode() { return new Float32Array(480); }, async release() {} };
+  const native = { backend: 'mlx', device: 'gpu', precision: 'bfloat16', load: async () => ({ languageModel: generator, decoder }) };
+  const tts = await createTTS({ native, decoder: 'student_w4' });
+  assert.equal(tts.decoder, 'student_w4');
+  assert.deepEqual(tts.availableVoices, ['Student']);
+  assert.deepEqual(tts.availableDecoders, ['default', 'student_w4']);
+  assert.equal((await createTTS({ native })).decoder, 'default');
+  await assert.rejects(createTTS({ native, decoder: 'nope' }), /decoder must be one of: default, student_w4/);
+
+  const files = [
+    { path: 'shared', size: 1 },
+    { path: 'flow.onnx', size: 1, backend: 'onnx' },
+    { path: 'lm', size: 1, backend: 'native' },
+    { path: 'voices.bin', size: 1, decoder: 'default' },
+    { path: 'decoder', size: 1, backend: 'native', decoder: 'default' },
+    { path: 'voices-student.bin', size: 1, decoder: 'student_w4' },
+    { path: 'student', size: 1, backend: 'native', decoder: 'student_w4' },
+  ];
+  const paths = (backend, name) => filesFor({ files }, backend, name).map(file => file.path);
+  assert.deepEqual(paths('native', 'student_w4'), ['shared', 'lm', 'voices-student.bin', 'student']);
+  assert.deepEqual(paths('native', 'default'), ['shared', 'lm', 'voices.bin', 'decoder']);
+  assert.deepEqual(paths('onnx', 'default'), ['shared', 'flow.onnx', 'voices.bin']);
 });
 
 test('repositories select the on-device model; API model IDs do not', () => {

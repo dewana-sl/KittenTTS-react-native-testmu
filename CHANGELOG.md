@@ -20,6 +20,13 @@
   when it is built in. An iPhone 17 then generates faster than it speaks (a
   real-time factor of 0.55 to 0.79, against 1.8 on the CPU) and downloads
   1.25 GB instead of 2.02 GB.
+- Added `decoder: 'student_w4'` for Kitten TTS 2 on MLX: the Python package's
+  distilled one-step decoder, 175 MB less to download and about 0.3 GiB less peak
+  memory on an iPhone 17, with lower voice similarity (0.684 against 0.752). The
+  overall speed hardly changes, because the language model takes about 80% of the
+  time.
+- Fixed the Expo plugin failing iOS builds for apps with no `assets/kittentts`
+  folder: it added a reference to the missing folder to the Xcode project.
 - Added a ggml backend for Kitten TTS 2 on Android 9+: the language model and
   s3gen's audio decoder on the GPU through Vulkan, in C++ on the same weights
   files as MLX, so it also downloads 1.25 GB. It is opt-in (`{ "ggml": true }` in

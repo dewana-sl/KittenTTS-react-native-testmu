@@ -81,11 +81,30 @@ export interface BundleManifest {
     decoder: string;
     config: Record<string, number>;
   };
+  /** Decoders besides s3gen's own, by the name the Python package's `decoder=` takes. */
+  decoders?: Record<string, { weights: string; voices: string; cfm_steps: number }>;
   tokenizer: { vocab: string; merges: string; added_tokens: string };
   normalizer: { en: { tagger: string; verbalizer: string; post?: string } };
   voices: string;
-  /** Every file, with its size and hash; `backend` marks the files only one backend reads. */
-  files: Array<{ path: string; size: number; sha256?: string; backend?: 'native' | 'onnx' }>;
+  /** Every file, with its size and hash; `backend` and `decoder` mark the files only one of them reads. */
+  files: Array<{ path: string; size: number; sha256?: string; backend?: 'native' | 'onnx'; decoder?: string }>;
+}
+
+/** Names accepted by `decoder`. */
+export function decoderNames(manifest: BundleManifest): string[] {
+  return ['default', ...Object.keys(manifest.decoders ?? {})];
+}
+
+export function checkDecoder(manifest: BundleManifest, decoder: string): void {
+  if (!decoderNames(manifest).includes(decoder)) {
+    throw KittenTTSError.invalidArgument(`decoder must be one of: ${decoderNames(manifest).join(', ')}.`);
+  }
+}
+
+/** The files one backend and one decoder read. */
+export function filesFor(manifest: BundleManifest, backend: 'native' | 'onnx', decoder: string): BundleManifest['files'] {
+  return manifest.files.filter(file =>
+    (!file.backend || file.backend === backend) && (!file.decoder || file.decoder === decoder));
 }
 
 export function checkManifest(value: unknown, source: string): BundleManifest {

@@ -21,13 +21,16 @@ It takes about a minute on a laptop and writes about 2 GB:
 | `flow.onnx` | 482 MB | s3gen's flow: codec tokens to a mel spectrogram, two meanflow steps |
 | `hift.onnx` | 83 MB | s3gen's HiFT vocoder: mel spectrogram to 24 kHz audio |
 | `voices.bin` | 19 MB | Every built-in voice, precomputed: prompt prefix, speaker embedding, decoder conditioning |
+| `decoder-student_w4-mlx.safetensors` | 107 MB | The repository's one-step student flow, with the same HiFT weights, for MLX: its 4-bit weights as int8 codes and scales, the rest as published |
+| `voices-student_w4.bin` | 8 MB | The voices with the student's own, shorter decoder conditioning |
 | `vocab.json`, `merges.txt`, `added_tokens.json` | 4.6 MB | The Qwen tokenizer, copied from the repository |
 | `text/en/*.fst.gz` | 0.8 MB | kitten-text-processing's English grammars |
 | `manifest.json` | | Every file with its size and SHA-256, plus the model's settings |
 
 Files only ONNX Runtime or only the native engines read carry `"backend": "onnx"`
 or `"native"` in the manifest, so a device downloads one copy of each model:
-2.02 GB for ONNX Runtime, 1.25 GB for the native engines.
+2.02 GB for ONNX Runtime, 1.25 GB for the native engines. Files only one decoder
+reads carry `"decoder"`, so an app using `student_w4` downloads 1.08 GB.
 
 Upload the folder to the model repository as `onnx/`, where the SDK looks by
 default, or anywhere else and pass that URL as `modelBaseURL`.

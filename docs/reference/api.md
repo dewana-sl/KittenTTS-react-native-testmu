@@ -171,6 +171,7 @@ await tts.generate('[sad] Maybe tomorrow <sigh>.', { voice: 'Luna', preset: 'exp
 | `model` | required | A Kitten TTS 2 repository: `'KittenML/kitten-tts-2'` |
 | `modelBaseURL` | the repository's `onnx/` folder on Hugging Face | Where `manifest.json` and the files it lists are served |
 | `backend` | `'auto'` | `'mlx'` (the GPU, iOS with the MLX module), `'ggml'` (the GPU through Vulkan, Android with the ggml engine), `'onnx'` (the CPU), or `'auto'`: the native engine when it runs on the GPU |
+| `decoder` | `'default'` | s3gen's flow in two steps, or `'student_w4'`: the distilled one-step decoder, a smaller download with lower quality, MLX only |
 | `precision` | `'int8'` | On ONNX Runtime: `'int8'` activations (faster) or `'float32'` |
 | `defaultVoice` | the model's (`'Bruno'`) | Voice used when a call names none |
 | `storageDirectory` | `<DocumentDirectory>/KittenTTS` | Files go in `<storageDirectory>/KittenML--kitten-tts-2/` |
@@ -194,6 +195,8 @@ downloaded, and the overall fraction across all files.
 | `presets` | Preset names accepted by `preset` |
 | `backend` | What runs the models: `'mlx'`, `'ggml'` or `'onnx'` |
 | `device` | Where they run: `'gpu'` or `'cpu'` |
+| `decoder` | The decoder in use: `'default'` or `'student_w4'` |
+| `availableDecoders` | Names accepted by `decoder` |
 | `precision` | `'int8'` or `'float32'` on ONNX Runtime, `'bfloat16'` on MLX, `'float32'` on ggml's GPU, `'int8'` on its CPU |
 | `model` | The repository it was created from |
 | `sampleRate` | `24000` |

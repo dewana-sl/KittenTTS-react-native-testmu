@@ -1,12 +1,17 @@
 // Kitten TTS 2's audio decoder on the GPU, through MLX: chatterbox-turbo's s3gen,
 // ported from the Python package's vendored s3gen.py. Codec tokens become a mel
-// spectrogram (the flow: a conformer encoder, then two meanflow steps of a UNet
+// spectrogram (the flow: a conformer encoder, then meanflow steps of a UNet
 // estimator), and the mel becomes 24 kHz audio (the HiFT vocoder).
+//
+// The flow is s3gen's own (two steps) or the Python package's distilled student
+// (student_flow.py: one step, narrower, 4-bit weights, 8-bit activations); the
+// graph is the same and the weights file says which it is.
 //
 // Weights are read by their torch names from the file
 // tools/kitten-tts-2-onnx/decoder_mlx.py writes, convolutions already folded and
-// laid out for MLX. They stay float16 in memory and are widened to float32 where
-// they are used; activations are float32 and channels-last, [1, time, channels].
+// laid out for MLX. They stay as stored in memory (float16, or the student's codes)
+// and are widened to float32 where they are used; activations are float32 and
+// channels-last, [1, time, channels].
 // The graph is evaluated layer by layer, so a long chunk's intermediates are
 // freed as it goes instead of all living until the end: on a phone, memory is
 // what limits the chunk length.
@@ -26,22 +31,37 @@ enum KittenAudioDecoderError: Error, LocalizedError {
 
 final class KittenAudioDecoder {
     let weights: [String: MLXArray]
+    /// Meanflow steps: two for s3gen's flow, one for a student's.
+    let flowSteps: Int
+    /// The conformer's width: 512, or 368 in the student.
+    private let encoderDims: Int
+    /// The estimator's attention width per head: 64, or 44 in the student.
+    private let estimatorHeadDims: Int
     private let stftBasis: MLXArray
     private let istftBasis: MLXArray
     private let overlapKernel: MLXArray
     private let windowSquared: MLXArray
 
     private static let mels = 80
+    private static let heads = 8
     private static let fft = 16
     private static let hop = 4
     private static let samplesPerFrame = 480
     private static let sampleRate: Float = 24_000
 
     init(url: URL) throws {
-        weights = try loadArrays(url: url).mapValues { $0.asType(.float16) }
+        let (arrays, metadata) = try loadArraysAndMetadata(url: url)
+        weights = arrays
         for name in ["flow.input_embedding.weight", "mel2wav.conv_post.weight"] where weights[name] == nil {
             throw KittenAudioDecoderError.missingWeight(name)
         }
+        flowSteps = metadata["flow_steps"].flatMap { Int($0) } ?? 2
+        encoderDims = weights["flow.input_embedding.weight"]!.dim(1)
+        let toQ = "flow.decoder.estimator.down_blocks.0.1.0.attn1.to_q.weight"
+        guard let attention = weights[toQ] ?? weights["\(toQ).codes"] else {
+            throw KittenAudioDecoderError.missingWeight(toQ)
+        }
+        estimatorHeadDims = attention.dim(0) / Self.heads
         eval(Array(weights.values))
         Memory.clearCache()
 
@@ -85,12 +105,23 @@ final class KittenAudioDecoder {
     // MARK: - Layers
 
     func w(_ name: String) throws -> MLXArray {
-        guard let value = weights[name] else { throw KittenAudioDecoderError.missingWeight(name) }
-        return value.asType(.float32)
+        if let value = weights[name] { return value.asType(.float32) }
+        guard let codes = weights["\(name).codes"], let scale = weights["\(name).scale"] else {
+            throw KittenAudioDecoderError.missingWeight(name)
+        }
+        return codes.asType(.float32) / scale
+    }
+
+    /// A student's layers with 4-bit weights also take 8-bit activations, per time
+    /// step (the Python package's activation_quant). Other layers take them as they are.
+    private func activations(_ x: MLXArray, _ name: String) -> MLXArray {
+        guard weights["\(name).weight.codes"] != nil else { return x }
+        let scale = 127 / maximum(abs(x).max(axis: -1, keepDims: true), 1e-5)
+        return clip(round(x * scale), min: -128, max: 127) / scale
     }
 
     func linear(_ x: MLXArray, _ name: String, bias: Bool = true) throws -> MLXArray {
-        let y = matmul(x, try w("\(name).weight").T)
+        let y = matmul(activations(x, name), try w("\(name).weight").T)
         return bias ? y + (try w("\(name).bias")) : y
     }
 
@@ -101,7 +132,7 @@ final class KittenAudioDecoder {
     func conv(
         _ x: MLXArray, _ name: String, stride: Int = 1, padding: Int = 0, dilation: Int = 1
     ) throws -> MLXArray {
-        conv1d(x, try w("\(name).weight"), stride: stride, padding: padding, dilation: dilation)
+        conv1d(activations(x, name), try w("\(name).weight"), stride: stride, padding: padding, dilation: dilation)
             + (try w("\(name).bias"))
     }
 
@@ -144,14 +175,16 @@ final class KittenAudioDecoder {
         let spksTime = broadcast(spks[0..., .newAxis, 0...], to: [1, frames, Self.mels])
 
         x = noise.map { $0[.newAxis] } ?? MLXRandom.normal([1, frames, Self.mels], key: key)
-        for (t, r) in [(Float(0), Float(0.5)), (Float(0.5), Float(1))] {
+        for step in 0 ..< flowSteps {
+            let t = Float(step) / Float(flowSteps), r = Float(step + 1) / Float(flowSteps)
             let velocity = try estimator(x, mu: mu, spks: spksTime, cond: cond, t: t, r: r)
             x = x + (r - t) * velocity
         }
         return x[0..., promptFrames...]                                                   // [1, 2T, 80]
     }
 
-    func positionalEncoding(_ length: Int, dims: Int = 512) -> MLXArray {
+    func positionalEncoding(_ length: Int) -> MLXArray {
+        let dims = encoderDims
         // Relative positions length - 1 down to -(length - 1), sines and cosines interleaved.
         let positions = MLXArray((0 ..< (2 * length - 1)).map { Float(length - 1 - $0) })
         let div = MLXArray((0 ..< dims / 2).map { Float(exp(Double(2 * $0) * -(log(10_000.0) / Double(dims)))) })
@@ -160,7 +193,7 @@ final class KittenAudioDecoder {
     }
 
     func encoder(_ input: MLXArray) throws -> MLXArray {
-        let scale = Float(512).squareRoot()
+        let scale = Float(encoderDims).squareRoot()
         var x = try layerNorm(try linear(input, "flow.encoder.embed.out.0"), "flow.encoder.embed.out.1", eps: 1e-5) * scale
         var pos = positionalEncoding(x.dim(1))
         // Look ahead three tokens, then a causal convolution, as a residual.
@@ -182,7 +215,7 @@ final class KittenAudioDecoder {
     }
 
     func conformerLayer(_ input: MLXArray, pos: MLXArray, _ p: String) throws -> MLXArray {
-        let heads = 8, dk = 64
+        let heads = Self.heads, dk = encoderDims / heads
         let length = input.dim(1)
         var x = input
         let h = try layerNorm(x, "\(p).norm_mha", eps: 1e-12)
@@ -223,7 +256,7 @@ final class KittenAudioDecoder {
         let angles = 1000 * t * freqs
         let embedding = concatenated([sin(angles), cos(angles)], axis: -1)[.newAxis]       // [1, 320]
         let e = "flow.decoder.estimator.time_mlp"
-        return try linear(silu(try linear(embedding, "\(e).linear_1")), "\(e).linear_2")   // [1, 1024]
+        return try linear(silu(try linear(embedding, "\(e).linear_1")), "\(e).linear_2")
     }
 
     func causalBlock(_ x: MLXArray, _ p: String) throws -> MLXArray {
@@ -239,7 +272,7 @@ final class KittenAudioDecoder {
     }
 
     func transformer(_ input: MLXArray, _ p: String) throws -> MLXArray {
-        let heads = 8, dk = 64
+        let heads = Self.heads, dk = estimatorHeadDims
         let length = input.dim(1)
         var x = input
         let h = try layerNorm(x, "\(p).norm1", eps: 1e-5)
