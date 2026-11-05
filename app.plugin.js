@@ -61,6 +61,9 @@ module.exports = function withKittenTTS(config, props = {}) {
 
   config = withXcodeProject(config, async (nextConfig) => {
     const source = path.resolve(nextConfig.modRequest.projectRoot, assetsDir);
+    // An app that bundles no assets has no folder for Xcode to copy; a reference to one fails the build.
+    if (!fs.existsSync(source)) return nextConfig;
+
     const iosSourceRoot = IOSConfig.Paths.getSourceRoot(nextConfig.modRequest.projectRoot);
     const destination = path.join(iosSourceRoot, assetRoot);
     copyDirectory(source, destination);
