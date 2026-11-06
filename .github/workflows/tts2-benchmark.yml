@@ -236,9 +236,10 @@ jobs:
           accessKey: ${{ secrets.LT_ACCESS_KEY }}
           tunnelName: tts2-${{ github.run_id }}-${{ matrix.slug }}
 
+      # WebdriverIO's worker dies on Node 22 ("write EINVAL"); the TestMu CI runs it on 20.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
       - name: Install Appium's client
         working-directory: e2e/tts2
