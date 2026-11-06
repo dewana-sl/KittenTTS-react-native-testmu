@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "tts2bench",
+    "slug": "tts2bench",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "bundleIdentifier": "dev.stellon.tts2bench",
+      "infoPlist": {
+        "NSAppTransportSecurity": { "NSAllowsArbitraryLoads": true }
+      }
+    },
+    "android": {
+      "package": "dev.stellon.tts2bench"
+    },
+    "plugins": [["@kittentts/react-native", { "mlx": true, "ggml": true }]]
+  }
+}

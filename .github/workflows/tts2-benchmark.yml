@@ -1,0 +1,328 @@
+name: Kitten TTS 2 on-device benchmark
+
+# Kitten TTS 2 on TestMu (LambdaTest) real devices: MLX on iPhones with three
+# decoders, ggml on Android phones. The model files come from
+# tools/kitten-tts-2-onnx/export.py and reach the devices through a LambdaTest
+# tunnel to the runner, since TestMu takes apps up to 1 GB. See benchmark/tts2.
+
+on:
+  push:
+    branches: [kitten-tts-2-benchmark]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tts2-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The Hugging Face revision the SDK's files were tested against.
+  MODEL_REVISION: c93cb7c271baa51d9ae8204d5277988906f235a2
+
+jobs:
+  models:
+    name: Model files
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install the exporter
+        timeout-minutes: 15
+        run: |
+          pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+          pip install -r tools/kitten-tts-2-onnx/requirements.txt
+
+      - name: Download the model repository
+        timeout-minutes: 10
+        run: |
+          python - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download("KittenML/kitten-tts-2", revision=os.environ["MODEL_REVISION"], local_dir="kitten-tts-2",
+                            allow_patterns=["config.json", "lm/*.json", "lm/merges.txt", "lm/model-ternary.safetensors",
+                                            "speaker/*", "voices/*", "decoders/*"])
+          PY
+
+      - name: Export
+        timeout-minutes: 20
+        run: |
+          python tools/kitten-tts-2-onnx/export.py --repo kitten-tts-2 --out bundle
+          python benchmark/tts2/scripts/add-test-decoder.py bundle
+          # The devices run the native engines; ONNX Runtime's files stay behind.
+          rm -f bundle/*.onnx bundle/lm.onnx.data
+          ls -la bundle
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tts2-model-files
+          path: bundle
+          compression-level: 0
+          retention-days: 3
+
+  ios-app:
+    name: iOS app (MLX)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      app_url: ${{ steps.upload.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Use the newest Xcode
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Pack the SDK
+        timeout-minutes: 10
+        run: |
+          npm ci --ignore-scripts
+          npm run build:ts
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+
+      - name: Install the app
+        timeout-minutes: 10
+        working-directory: benchmark/tts2
+        run: |
+          npm ci
+          npm install "$RUNNER_TEMP"/kittentts-react-native-*.tgz
+          (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
+
+      - name: Generate the iOS project
+        timeout-minutes: 15
+        working-directory: benchmark/tts2
+        run: |
+          CI=1 npx expo prebuild --platform ios --no-install
+          python3 scripts/scene-fix.py .
+          cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+
+      - name: Build an unsigned IPA
+        timeout-minutes: 35
+        working-directory: benchmark/tts2
+        run: |
+          set -o pipefail
+          xcodebuild -version
+          xcodebuild -downloadComponent MetalToolchain || true
+          xcodebuild -workspace ios/tts2bench.xcworkspace -scheme tts2bench -configuration Release \
+            -sdk iphoneos -destination generic/platform=iOS -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > "$RUNNER_TEMP/xcodebuild.log" 2>&1 \
+            || { grep -E "error:|BUILD FAILED" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -40; tail -40 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/tts2bench.app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry ../tts2bench.ipa Payload)
+          ls -la "$RUNNER_TEMP/tts2bench.ipa"
+
+      - id: upload
+        name: Upload the IPA to TestMu
+        timeout-minutes: 10
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
+            "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS2_iOS_${GITHUB_RUN_ID}" --form "appFile=@$RUNNER_TEMP/tts2bench.ipa")"
+          app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+  android-app:
+    name: Android app (ggml)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      app_url: ${{ steps.upload.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Pack the SDK
+        timeout-minutes: 10
+        run: |
+          npm ci --ignore-scripts
+          npm run build:ts
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+
+      - name: Install the app
+        timeout-minutes: 10
+        working-directory: benchmark/tts2
+        run: |
+          npm ci
+          npm install "$RUNNER_TEMP"/kittentts-react-native-*.tgz
+          (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
+
+      - name: Generate the Android project
+        timeout-minutes: 10
+        working-directory: benchmark/tts2
+        run: |
+          CI=1 npx expo prebuild --platform android --no-install
+          python3 scripts/allow-http.py .
+
+      - name: Build the release APK
+        timeout-minutes: 55
+        working-directory: benchmark/tts2/android
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          ls -la app/build/outputs/apk/release/app-release.apk
+          unzip -l app/build/outputs/apk/release/app-release.apk | grep -E "libkittentts2|libonnxruntime" || true
+
+      - id: upload
+        name: Upload the APK to TestMu
+        timeout-minutes: 10
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
+            "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS2_Android_${GITHUB_RUN_ID}" \
+            --form "appFile=@benchmark/tts2/android/app/build/outputs/apk/release/app-release.apk")"
+          app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+  ios:
+    name: iOS ${{ matrix.device }}
+    needs: [models, ios-app]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TESTMU_PLATFORM: iOS
+      TESTMU_APP_URL: ${{ needs.ios-app.outputs.app_url }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - { slug: iphone-16, device: iPhone 16, version: '18' }
+          - { slug: iphone-15, device: iPhone 15, version: '17' }
+          - { slug: iphone-13, device: iPhone 13, version: '17' }
+    steps: &device-steps
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tts2-model-files
+          path: bundle
+
+      - name: Serve the model files
+        run: |
+          nohup python3 -m http.server 8788 --bind 127.0.0.1 --directory bundle > server.log 2>&1 &
+          for _ in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8788/manifest.json && exit 0; sleep 1; done
+          exit 1
+
+      - name: Start the LambdaTest tunnel
+        uses: LambdaTest/LambdaTest-tunnel-action@v2
+        with:
+          user: ${{ secrets.LT_USERNAME }}
+          accessKey: ${{ secrets.LT_ACCESS_KEY }}
+          tunnelName: tts2-${{ github.run_id }}-${{ matrix.slug }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Appium's client
+        working-directory: e2e/tts2
+        run: npm ci
+
+      - name: Run the benchmark on the device
+        timeout-minutes: 45
+        continue-on-error: true
+        working-directory: e2e/tts2
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_VERSION: ${{ matrix.version }}
+          TESTMU_TUNNEL_NAME: tts2-${{ github.run_id }}-${{ matrix.slug }}
+          TTS2_REPORT: reports/${{ matrix.slug }}.json
+        run: npm test
+
+      - name: Keep a report even when the device never sent one
+        if: always()
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_VERSION: ${{ matrix.version }}
+        run: |
+          requests="$(grep -c '"GET /' server.log || true)"
+          echo "Model file requests served: $requests"
+          node -e '
+            const fs = require("fs");
+            const file = process.argv[1];
+            if (fs.existsSync(file)) process.exit(0);
+            fs.mkdirSync("e2e/tts2/reports", { recursive: true });
+            fs.writeFileSync(file, JSON.stringify({
+              deviceName: process.env.TESTMU_DEVICE, platformName: process.env.TESTMU_PLATFORM,
+              platformVersion: process.env.TESTMU_VERSION, done: false,
+              error: `No report from the device (model file requests served: ${process.argv[2]}); see the job log.`,
+            }));
+          ' "e2e/tts2/reports/${{ matrix.slug }}.json" "$requests"
+          node e2e/tts2/report.js e2e/tts2/reports >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tts2-report-${{ matrix.slug }}
+          path: e2e/tts2/reports
+
+  android:
+    name: Android ${{ matrix.device }}
+    needs: [models, android-app, ios]
+    if: ${{ !cancelled() && needs.models.result == 'success' && needs.android-app.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TESTMU_PLATFORM: Android
+      TESTMU_APP_URL: ${{ needs.android-app.outputs.app_url }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - { slug: pixel-8, device: Pixel 8, version: '14' }
+          - { slug: galaxy-note10, device: Galaxy Note10, version: '12' }
+          - { slug: pixel-5, device: Pixel 5, version: '12' }
+    steps: *device-steps
+
+  report:
+    name: Report
+    needs: [ios, android]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tts2-report-*
+          path: reports
+          merge-multiple: true
+
+      - name: Summarise
+        run: node e2e/tts2/report.js reports | tee summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tts2-summary
+          path: |
+            summary.md
+            reports
