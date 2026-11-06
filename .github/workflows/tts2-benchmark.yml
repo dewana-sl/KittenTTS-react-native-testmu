@@ -29,17 +29,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: bundle
+          key: tts2-models-${{ env.MODEL_REVISION }}-${{ hashFiles('tools/kitten-tts-2-onnx/*.py', 'tools/kitten-tts-2-onnx/requirements.txt', 'benchmark/tts2/scripts/add-test-decoder.py') }}
+
       - uses: actions/setup-python@v5
+        if: steps.cache.outputs.cache-hit != 'true'
         with:
           python-version: '3.12'
 
       - name: Install the exporter
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 15
         run: |
           pip install --index-url https://download.pytorch.org/whl/cpu torch torchaudio
           pip install -r tools/kitten-tts-2-onnx/requirements.txt
 
       - name: Download the model repository
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
           python - <<'PY'
@@ -51,6 +60,7 @@ jobs:
           PY
 
       - name: Export
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 20
         run: |
           python tools/kitten-tts-2-onnx/export.py --repo kitten-tts-2 --out bundle
@@ -75,17 +85,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: artifacts/tts2bench.ipa
+          key: tts2-ios-${{ hashFiles('src/**', 'ios/**', 'KittenTTSReactNative.podspec', 'app.plugin.js', 'package-lock.json', 'benchmark/tts2/**') }}
+
       - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true'
         with:
           node-version: 22
 
       - name: Use the newest Xcode
+        if: steps.cache.outputs.cache-hit != 'true'
         run: |
           xcode="$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | grep -vi beta | sort -V | tail -1)"
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
       - name: Pack the SDK
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
           npm ci --ignore-scripts
@@ -93,6 +112,7 @@ jobs:
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
 
       - name: Install the app
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         working-directory: benchmark/tts2
         run: |
@@ -101,6 +121,7 @@ jobs:
           (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
 
       - name: Generate the iOS project
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 15
         working-directory: benchmark/tts2
         run: |
@@ -109,6 +130,7 @@ jobs:
           cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
 
       - name: Build an unsigned IPA
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 35
         working-directory: benchmark/tts2
         run: |
@@ -121,8 +143,9 @@ jobs:
             || { grep -E "error:|BUILD FAILED" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -40; tail -40 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
           mkdir -p "$RUNNER_TEMP/ipa/Payload"
           cp -R "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/tts2bench.app" "$RUNNER_TEMP/ipa/Payload/"
-          (cd "$RUNNER_TEMP/ipa" && zip -qry ../tts2bench.ipa Payload)
-          ls -la "$RUNNER_TEMP/tts2bench.ipa"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/artifacts/tts2bench.ipa" Payload)
+          ls -la "$GITHUB_WORKSPACE/artifacts/tts2bench.ipa"
 
       - id: upload
         name: Upload the IPA to TestMu
@@ -133,8 +156,9 @@ jobs:
         run: |
           response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
             "https://manual-api.lambdatest.com/app/upload/realDevice" \
-            --form "name=KittenTTS2_iOS_${GITHUB_RUN_ID}" --form "appFile=@$RUNNER_TEMP/tts2bench.ipa")"
+            --form "name=KittenTTS2_iOS_${GITHUB_RUN_ID}" --form "appFile=@artifacts/tts2bench.ipa")"
           app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "TestMu app: $app_url"
           echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
 
   android-app:
@@ -146,16 +170,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: artifacts/tts2bench.apk
+          key: tts2-android-${{ hashFiles('src/**', 'android/**', 'app.plugin.js', 'package-lock.json', 'benchmark/tts2/**') }}
+
       - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true'
         with:
           node-version: 22
 
       - uses: actions/setup-java@v4
+        if: steps.cache.outputs.cache-hit != 'true'
         with:
           distribution: temurin
           java-version: 17
 
       - name: Pack the SDK
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         run: |
           npm ci --ignore-scripts
@@ -163,6 +196,7 @@ jobs:
           npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
 
       - name: Install the app
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         working-directory: benchmark/tts2
         run: |
@@ -171,6 +205,7 @@ jobs:
           (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
 
       - name: Generate the Android project
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 10
         working-directory: benchmark/tts2
         run: |
@@ -178,12 +213,15 @@ jobs:
           python3 scripts/allow-http.py .
 
       - name: Build the release APK
+        if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 55
         working-directory: benchmark/tts2/android
         run: |
           ./gradlew assembleRelease --no-daemon
-          ls -la app/build/outputs/apk/release/app-release.apk
           unzip -l app/build/outputs/apk/release/app-release.apk | grep -E "libkittentts2|libonnxruntime" || true
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/artifacts/tts2bench.apk"
+          ls -la "$GITHUB_WORKSPACE/artifacts/tts2bench.apk"
 
       - id: upload
         name: Upload the APK to TestMu
@@ -195,8 +233,9 @@ jobs:
           response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
             "https://manual-api.lambdatest.com/app/upload/realDevice" \
             --form "name=KittenTTS2_Android_${GITHUB_RUN_ID}" \
-            --form "appFile=@benchmark/tts2/android/app/build/outputs/apk/release/app-release.apk")"
+            --form "appFile=@artifacts/tts2bench.apk")"
           app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "TestMu app: $app_url"
           echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
 
   ios:
