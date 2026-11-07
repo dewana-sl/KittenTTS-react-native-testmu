@@ -77,12 +77,14 @@ public final class KittenTTS2MLXEngine: NSObject {
                                   userInfo: [NSLocalizedDescriptionKey: "promptFeat is not float32 mel frames."])
                 }
                 let feat = featData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-                let samples = try withError {
-                    try decoder.decode(
+                let samples = try withError { () -> [Float] in
+                    let audio = try decoder.decode(
                         tokens: tokens.map(\.intValue), promptToken: promptToken.map(\.intValue),
                         promptFeat: MLXArray(feat, [feat.count / 80, 80]),
-                        embedding: embedding.map(\.floatValue), seed: UInt64(seed)
-                    ).asArray(Float.self)
+                        embedding: embedding.map(\.floatValue), seed: UInt64(seed))
+                    // A failed evaluation leaves nothing to read: throw it before reading.
+                    try withError { eval(audio) }
+                    return audio.asArray(Float.self)
                 }
                 Memory.clearCache()
                 let bytes = samples.withUnsafeBufferPointer { Data(buffer: $0) }
@@ -153,7 +155,7 @@ public final class KittenTTS2MLXEngine: NSObject {
         var random = KittenRandom(seed: seed)
 
         let cache = model.newCache()
-        var logits = model.prefill(prompt, speaker: model.speakerHidden(speaker), cache: cache)
+        var logits = try model.prefill(prompt, speaker: model.speakerHidden(speaker), cache: cache)
         var history = prompt
         var generated: [Int] = []
         while generated.count < maxNewTokens {
@@ -165,7 +167,7 @@ public final class KittenTTS2MLXEngine: NSObject {
             generated.append(token)
             if generated.count == maxNewTokens { break }
             if isCancelled() { throw KittenLanguageModelError.cancelled }
-            logits = model.step(token, cache: cache)
+            logits = try model.step(token, cache: cache)
         }
         return generated
     }

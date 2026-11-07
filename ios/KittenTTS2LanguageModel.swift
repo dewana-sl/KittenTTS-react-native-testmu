@@ -165,16 +165,16 @@ final class KittenLanguageModel {
     }
 
     /// Run `prompt` from an empty cache, with position 0 replaced by the speaker. Returns head logits.
-    func prefill(_ prompt: [Int], speaker: MLXArray, cache: Cache) -> [Float] {
+    func prefill(_ prompt: [Int], speaker: MLXArray, cache: Cache) throws -> [Float] {
         let ids = MLXArray(prompt.map { Int32($0) })
         var embeddings = take(embed, ids, axis: 0)[.newAxis]
         embeddings = concatenated([speaker.asType(embeddings.dtype), embeddings[0..., 1...]], axis: 1)
-        return forward(embeddings, cache: cache)
+        return try forward(embeddings, cache: cache)
     }
 
     /// One more token. Returns head logits.
-    func step(_ token: Int, cache: Cache) -> [Float] {
-        forward(take(embed, MLXArray([Int32(token)]), axis: 0)[.newAxis], cache: cache)
+    func step(_ token: Int, cache: Cache) throws -> [Float] {
+        try forward(take(embed, MLXArray([Int32(token)]), axis: 0)[.newAxis], cache: cache)
     }
 
     final class Cache {
@@ -184,7 +184,7 @@ final class KittenLanguageModel {
 
     func newCache() -> Cache { Cache(layers: config.layers) }
 
-    private func forward(_ embeddings: MLXArray, cache: Cache) -> [Float] {
+    private func forward(_ embeddings: MLXArray, cache: Cache) throws -> [Float] {
         let length = embeddings.dim(1)
         let mask: MLXFast.ScaledDotProductAttentionMaskMode = length > 1 ? .causal : .none
         let scale = 1 / Float(config.headDim).squareRoot()
@@ -211,6 +211,8 @@ final class KittenLanguageModel {
         let last = MLXFast.rmsNorm(x[0..., (length - 1)...], weight: norm, eps: config.rmsNormEps)
         // The tied output head, cut to the rows the sampler draws from.
         let logits = matmul(last.reshaped([1, -1]), head.T).asType(.float32).reshaped([-1])
+        // A failed evaluation goes to MLX's error handler and leaves nothing to read: throw it first.
+        try withError { eval(logits) }
         return logits.asArray(Float.self)
     }
 }
