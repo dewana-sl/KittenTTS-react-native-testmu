@@ -31,6 +31,8 @@ interface NativeEngineModule {
 }
 
 const MODULE_NAMES: Record<NativeBackend, string> = { mlx: 'KittenTTS2MLX', ggml: 'KittenTTS2GGML' };
+/** How errors name each engine. */
+const ENGINE_NAMES: Record<NativeBackend, string> = { mlx: 'MLX', ggml: 'ggml' };
 
 const native = (backend: NativeBackend): NativeEngineModule | undefined =>
   (NativeModules as Record<string, NativeEngineModule | undefined>)[MODULE_NAMES[backend]];
@@ -69,7 +71,11 @@ export async function nativeDevice(backend: NativeBackend): Promise<'gpu' | 'cpu
  * the prompt in and the tokens out.
  */
 export class NativeLanguageModel implements TokenGenerator {
-  private constructor(private readonly module: NativeEngineModule, private readonly tokens: LanguageModelTokens) {}
+  private constructor(
+    private readonly module: NativeEngineModule,
+    private readonly tokens: LanguageModelTokens,
+    private readonly engine: string,
+  ) {}
 
   static async load(
     backend: NativeBackend,
@@ -81,9 +87,9 @@ export class NativeLanguageModel implements TokenGenerator {
     try {
       await module.load(path, config);
     } catch (error) {
-      throw KittenTTSError.inferenceFailed(`Could not load the ${backend} language model: ${errorMessage(error)}`, error);
+      throw KittenTTSError.inferenceFailed(`Could not load the language model: ${errorMessage(error)}`, error, ENGINE_NAMES[backend]);
     }
-    return new NativeLanguageModel(module, tokens);
+    return new NativeLanguageModel(module, tokens, ENGINE_NAMES[backend]);
   }
 
   async generate(
@@ -111,7 +117,7 @@ export class NativeLanguageModel implements TokenGenerator {
       }, maxNewTokens, seed);
     } catch (error) {
       if (signal?.aborted || (error as { code?: string })?.code === 'CANCELLED') throw cancelled();
-      throw KittenTTSError.inferenceFailed(errorMessage(error), error);
+      throw KittenTTSError.inferenceFailed(errorMessage(error), error, this.engine);
     } finally {
       clearInterval(watch);
     }
@@ -129,16 +135,20 @@ export class NativeLanguageModel implements TokenGenerator {
  * come back as base64 float32 bytes.
  */
 export class NativeAudioDecoder implements AudioDecoderLike {
-  private constructor(private readonly module: NativeEngineModule, private readonly silenceToken: number) {}
+  private constructor(
+    private readonly module: NativeEngineModule,
+    private readonly silenceToken: number,
+    private readonly engine: string,
+  ) {}
 
   static async load(backend: NativeBackend, path: string, silenceToken: number): Promise<NativeAudioDecoder> {
     const module = required(backend);
     try {
       await module.loadDecoder(path);
     } catch (error) {
-      throw KittenTTSError.inferenceFailed(`Could not load the ${backend} audio decoder: ${errorMessage(error)}`, error);
+      throw KittenTTSError.inferenceFailed(`Could not load the audio decoder: ${errorMessage(error)}`, error, ENGINE_NAMES[backend]);
     }
-    return new NativeAudioDecoder(module, silenceToken);
+    return new NativeAudioDecoder(module, silenceToken, ENGINE_NAMES[backend]);
   }
 
   async decode(codes: readonly number[], conditioning: DecoderConditioning, random: Random): Promise<Float32Array | null> {
@@ -156,7 +166,7 @@ export class NativeAudioDecoder implements AudioDecoderLike {
         seed,
       );
     } catch (error) {
-      throw KittenTTSError.inferenceFailed(errorMessage(error), error);
+      throw KittenTTSError.inferenceFailed(errorMessage(error), error, this.engine);
     }
     const bytes = base64ToUint8Array(base64);
     return applyTrimFade(new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4));
