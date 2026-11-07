@@ -22,7 +22,7 @@ public:
     Runtime & operator=(const Runtime &) = delete;
 
     bool hasGpu() const { return gpu_ != nullptr; }
-    /** "Vulkan0: <GPU name>" or "CPU". */
+    /** "Vulkan0: <GPU name>", or "CPU (<why the GPU is not used>)". */
     const std::string & device() const { return device_; }
     /** Where weights and caches live: the GPU's memory, or the CPU's. */
     ggml_backend_buffer_type_t weightBuffer() const;

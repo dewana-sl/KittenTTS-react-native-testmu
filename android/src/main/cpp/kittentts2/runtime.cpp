@@ -8,19 +8,65 @@
 
 #include "ggml-cpu.h"
 
+#ifdef KITTENTTS2_VULKAN
+#include <vulkan/vulkan.h>
+#endif
+
 namespace kt2 {
 
+namespace {
+
+#ifdef KITTENTTS2_VULKAN
+std::string vulkanVersion(uint32_t version) {
+    return std::to_string(VK_API_VERSION_MAJOR(version)) + "." + std::to_string(VK_API_VERSION_MINOR(version));
+}
+#endif
+
+/** The Vulkan the device offers, for when ggml-vulkan finds no GPU: it needs Vulkan 1.2. */
+std::string vulkanSummary() {
+#ifdef KITTENTTS2_VULKAN
+    uint32_t instanceVersion = VK_API_VERSION_1_0;
+    vkEnumerateInstanceVersion(&instanceVersion);
+    std::string out = "Vulkan " + vulkanVersion(instanceVersion);
+    VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+    app.apiVersion = VK_API_VERSION_1_1;
+    VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    info.pApplicationInfo = &app;
+    VkInstance instance = VK_NULL_HANDLE;
+    if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS) return out + ", which would not start";
+    uint32_t count = 0;
+    vkEnumeratePhysicalDevices(instance, &count, nullptr);
+    std::vector<VkPhysicalDevice> devices(count);
+    vkEnumeratePhysicalDevices(instance, &count, devices.data());
+    for (VkPhysicalDevice device : devices) {
+        VkPhysicalDeviceProperties properties;
+        vkGetPhysicalDeviceProperties(device, &properties);
+        out += std::string(", ") + properties.deviceName + " with Vulkan " + vulkanVersion(properties.apiVersion);
+    }
+    vkDestroyInstance(instance, nullptr);
+    return out;
+#else
+    return "a build without Vulkan";
+#endif
+}
+
+} // namespace
+
 Runtime::Runtime(bool useGpu, int threads) {
+    // Why the GPU is not used, reported as "CPU (<reason>)".
+    std::string reason = "GPU turned off";
     if (useGpu) {
+        reason = "ggml-vulkan found no GPU it can use (it needs Vulkan 1.2): " + vulkanSummary();
         for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
             ggml_backend_dev_t dev = ggml_backend_dev_get(i);
             auto type = ggml_backend_dev_type(dev);
             if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
             try {
                 gpu_ = ggml_backend_dev_init(dev, nullptr);
-            } catch (const std::exception &) {
+            } catch (const std::exception & error) {
                 // ggml-vulkan throws for a GPU it cannot use (no 16-bit storage, say): run on the CPU.
                 gpu_ = nullptr;
+                reason = std::string(ggml_backend_dev_description(dev)) + ": " + error.what();
             }
             if (gpu_) {
                 device_ = std::string(ggml_backend_dev_name(dev)) + ": " + ggml_backend_dev_description(dev);
@@ -35,7 +81,7 @@ Runtime::Runtime(bool useGpu, int threads) {
         threads = static_cast<int>(std::clamp(std::thread::hardware_concurrency() / 2, 2u, 4u));
     }
     ggml_backend_cpu_set_n_threads(cpu_, threads);
-    if (!gpu_) device_ = "CPU";
+    if (!gpu_) device_ = "CPU (" + reason + ")";
 }
 
 Runtime::~Runtime() {

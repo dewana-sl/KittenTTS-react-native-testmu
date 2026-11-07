@@ -134,6 +134,12 @@ add_library(kittentts2_engine STATIC
 target_include_directories(kittentts2_engine PUBLIC kittentts2)
 target_compile_features(kittentts2_engine PUBLIC cxx_std_17)
 target_link_libraries(kittentts2_engine PUBLIC ggml)
+if(KITTENTTS2_VULKAN)
+    # runtime.cpp asks Vulkan which version the device has when ggml-vulkan finds no GPU.
+    target_compile_definitions(kittentts2_engine PRIVATE KITTENTTS2_VULKAN)
+    target_include_directories(kittentts2_engine PRIVATE "${Vulkan_INCLUDE_DIR}")
+    target_link_libraries(kittentts2_engine PRIVATE "${Vulkan_LIBRARY}")
+endif()
 
 if(ANDROID)
     add_library(kittentts2 SHARED kittentts2/jni.cpp)
