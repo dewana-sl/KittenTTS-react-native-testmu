@@ -47,8 +47,11 @@ try {
     user: required('LT_USERNAME'),
     key: required('LT_ACCESS_KEY'),
     logLevel: 'warn',
-    connectionRetryTimeout: 300000,
-    connectionRetryCount: 2,
+    // TestMu holds the request while the device is queued and the app installs,
+    // which can take longer than the default 5 minutes. A request given up on is
+    // still served later, and its session then holds the account's device.
+    connectionRetryTimeout: 20 * 60 * 1000,
+    connectionRetryCount: 0,
     capabilities: {
       platformName,
       'appium:deviceName': deviceName,
@@ -62,7 +65,8 @@ try {
         name: `Kitten TTS 2 ${platformName} - ${deviceName}`,
         project: 'KittenTTS React Native',
         isRealMobile: true,
-        idleTimeout: 1800,
+        // Seconds without a command before TestMu ends the session; the runner polls every 15.
+        idleTimeout: 180,
         console: true,
         devicelog: true,
         network: false,
