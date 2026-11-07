@@ -2,6 +2,7 @@
 // the language model (KittenTTS2LanguageModel.swift) and the audio decoder
 // (KittenTTS2AudioDecoder.swift). Work runs one call at a time on its own queue,
 // token loop and sampling included, so nothing crosses to JavaScript per token.
+// MLX errors are thrown (withError) and reach JavaScript; otherwise MLX ends the app.
 
 import Foundation
 import Metal
@@ -35,8 +36,10 @@ public final class KittenTTS2MLXEngine: NSObject {
                 // MLX keeps freed buffers for reuse; on a phone, keep that cache small.
                 Memory.cacheLimit = 64 * 1024 * 1024
                 self.model = nil
-                self.model = try KittenLanguageModel(
-                    url: URL(fileURLWithPath: path), config: try Self.config(config))
+                let config = try Self.config(config)
+                self.model = try withError {
+                    try KittenLanguageModel(url: URL(fileURLWithPath: path), config: config)
+                }
                 Memory.clearCache()
                 completion(nil)
             } catch {
@@ -49,7 +52,7 @@ public final class KittenTTS2MLXEngine: NSObject {
         queue.async {
             do {
                 self.decoder = nil
-                self.decoder = try KittenAudioDecoder(url: URL(fileURLWithPath: path))
+                self.decoder = try withError { try KittenAudioDecoder(url: URL(fileURLWithPath: path)) }
                 completion(nil)
             } catch {
                 completion(Self.error(error))
@@ -74,11 +77,13 @@ public final class KittenTTS2MLXEngine: NSObject {
                                   userInfo: [NSLocalizedDescriptionKey: "promptFeat is not float32 mel frames."])
                 }
                 let feat = featData.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-                let audio = try decoder.decode(
-                    tokens: tokens.map(\.intValue), promptToken: promptToken.map(\.intValue),
-                    promptFeat: MLXArray(feat, [feat.count / 80, 80]),
-                    embedding: embedding.map(\.floatValue), seed: UInt64(seed))
-                let samples = audio.asArray(Float.self)
+                let samples = try withError {
+                    try decoder.decode(
+                        tokens: tokens.map(\.intValue), promptToken: promptToken.map(\.intValue),
+                        promptFeat: MLXArray(feat, [feat.count / 80, 80]),
+                        embedding: embedding.map(\.floatValue), seed: UInt64(seed)
+                    ).asArray(Float.self)
+                }
                 Memory.clearCache()
                 let bytes = samples.withUnsafeBufferPointer { Data(buffer: $0) }
                 completion(bytes.base64EncodedString(), nil)
@@ -100,9 +105,11 @@ public final class KittenTTS2MLXEngine: NSObject {
                     throw NSError(domain: "KittenTTS2MLX", code: 1,
                                   userInfo: [NSLocalizedDescriptionKey: "The MLX model is not loaded."])
                 }
-                let tokens = try self.run(
-                    model, prompt: prompt.map(\.intValue), speaker: speaker.map(\.floatValue),
-                    settings: settings, maxNewTokens: maxNewTokens, seed: seed)
+                let tokens = try withError {
+                    try self.run(
+                        model, prompt: prompt.map(\.intValue), speaker: speaker.map(\.floatValue),
+                        settings: settings, maxNewTokens: maxNewTokens, seed: seed)
+                }
                 Memory.clearCache()
                 completion(tokens.map { NSNumber(value: $0) }, nil)
             } catch {

@@ -70,10 +70,11 @@ export class KittenTTSError extends Error {
     );
   }
 
-  static inferenceFailed(detail: string, cause?: unknown): KittenTTSError {
+  /** `engine` names what failed: ONNX Runtime by default, or Kitten TTS 2's native engines. */
+  static inferenceFailed(detail: string, cause?: unknown, engine = 'ONNX'): KittenTTSError {
     return new KittenTTSError(
       KittenTTSErrorCode.InferenceFailed,
-      `ONNX inference failed: ${detail}`,
+      `${engine} inference failed: ${detail}`,
       cause,
     );
   }

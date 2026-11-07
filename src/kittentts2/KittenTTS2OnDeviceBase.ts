@@ -514,7 +514,7 @@ export class KittenTTS2OnDeviceBase {
       }
     } catch (error) {
       if (isKittenTTSError(error)) throw error;
-      throw KittenTTSError.inferenceFailed(errorMessage(error), error);
+      throw KittenTTSError.inferenceFailed(errorMessage(error), error, 'Kitten TTS 2');
     }
   }
 
