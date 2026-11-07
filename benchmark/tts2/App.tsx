@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { NativeModules, Platform, ScrollView, Text } from 'react-native';
+import { useRef, useState } from 'react';
+import { NativeModules, Platform, Pressable, ScrollView, Text, TextInput } from 'react-native';
 import { activateKeepAwakeAsync } from 'expo-keep-awake';
 import * as RNFS from 'react-native-fs';
 import { KittenTTS } from '@kittentts/react-native';
 
 // Kitten TTS 2 on TestMu's real devices. The workflow serves the model files from
-// the GitHub runner through a LambdaTest tunnel. The app runs every check on
-// launch and shows its report as JSON, which the Appium spec reads off the screen.
-const BASE = 'http://localhost.lambdatest.com:8788';
+// the GitHub runner at a temporary address, which Appium types in before it taps
+// Start. The app then runs every check and shows its report as JSON, which Appium
+// reads off the screen.
 const STORAGE = `${RNFS.DocumentDirectoryPath}/KittenTTS`;
 const FILES = `${STORAGE}/KittenML--kitten-tts-2`;
 const IOS = Platform.OS === 'ios';
@@ -61,7 +61,7 @@ function audioCheck(samples: Float32Array) {
   return { rms: round(rms, 4), peak: round(peak, 3), ok: finite && rms > 0.005 && peak < 1.5 };
 }
 
-async function run(publish: (report: object) => void) {
+async function run(base: string, publish: (report: object) => void) {
   const constants = Platform.constants as Record<string, unknown>;
   const report = {
     app: 'kitten-tts-2-benchmark',
@@ -102,10 +102,16 @@ async function run(publish: (report: object) => void) {
     let downloadEnded = 0;
     let downloading = false;
     const tts: any = await KittenTTS.create({
-      model: 'KittenML/kitten-tts-2', modelBaseURL: BASE, storageDirectory: STORAGE, backend: BACKEND, decoder,
+      model: 'KittenML/kitten-tts-2', modelBaseURL: base, storageDirectory: STORAGE, backend: BACKEND, decoder,
     } as any, (fraction: number, info: any) => {
       if (info?.stage === 'downloading') downloading = true;
-      if (info?.stage === 'complete' || info?.stage === 'cached') downloadEnded = Date.now();
+      if (info?.stage === 'complete' || info?.stage === 'cached') {
+        downloadEnded = Date.now();
+        // Shown at once, so a crash while the models load is not reported as one in the download.
+        report.status = `${decoder}: loading the models`;
+        show(true);
+        return;
+      }
       report.status = `${decoder}: ${info?.stage ?? ''} ${Math.round(fraction * 100)}% ${info?.file ?? ''}`;
       show();
     });
@@ -265,22 +271,37 @@ async function run(publish: (report: object) => void) {
   show(true);
 }
 
+// Android finds elements by content description, iOS by test ID.
+const id = (name: string) => (Platform.OS === 'android' ? { testID: name, accessibilityLabel: name } : { testID: name });
+
 export default function App() {
-  const [text, setText] = useState('{"status":"starting"}');
+  const [text, setText] = useState('{"status":"waiting for the model files address"}');
+  const [base, setBase] = useState('');
   const started = useRef(false);
-  useEffect(() => {
-    if (started.current) return;
+  const start = () => {
+    if (started.current || !base.trim()) return;
     started.current = true;
     activateKeepAwakeAsync().catch(() => {}).finally(() => {
-      run(report => setText(JSON.stringify(report))).catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
+      run(base.trim().replace(/\/+$/, ''), report => setText(JSON.stringify(report)))
+        .catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
     });
-  }, []);
-  // Android finds elements by content description, iOS by test ID.
-  const id = Platform.OS === 'android' ? { testID: 'tts2-report', accessibilityLabel: 'tts2-report' } : { testID: 'tts2-report' };
+  };
   return (
-    <ScrollView contentContainerStyle={{ padding: 12, paddingTop: 56 }}>
+    <ScrollView contentContainerStyle={{ padding: 12, paddingTop: 56 }} keyboardShouldPersistTaps="handled">
       <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>Kitten TTS 2 benchmark</Text>
-      <Text {...id} style={{ fontSize: 9 }}>{text}</Text>
+      <TextInput
+        {...id('tts2-base')}
+        value={base}
+        onChangeText={setBase}
+        placeholder="Model files address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        style={{ borderWidth: 1, borderColor: '#999', padding: 8, fontSize: 12 }}
+      />
+      <Pressable {...id('tts2-start')} onPress={start} style={{ padding: 10, marginVertical: 8, backgroundColor: '#ddd' }}>
+        <Text>Start</Text>
+      </Pressable>
+      <Text {...id('tts2-report')} style={{ fontSize: 9 }}>{text}</Text>
     </ScrollView>
   );
 }

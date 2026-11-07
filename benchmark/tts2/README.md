@@ -10,8 +10,9 @@ three decoders (`default`, `stock_1step`, `student_w4`); Android runs ggml with
 `tools/kitten-tts-2-onnx/export.py`, builds this app against the SDK in this
 branch, and runs it on TestMu (LambdaTest) real devices through
 `e2e/tts2`. The model files are too big to ship in the app (TestMu takes apps up
-to 1 GB), so the runner serves them through a LambdaTest tunnel at
-`http://localhost.lambdatest.com:8788`.
+to 1 GB), so the runner serves them at a temporary Cloudflare address (a quick
+tunnel), which Appium types into the app before it taps Start. A LambdaTest tunnel
+was tried first: one iPhone downloaded at about 80 KB/s.
 
 `scripts/add-test-decoder.py` adds `stock_1step`, a test-only decoder;
 `scripts/scene-fix.py` moves the app to the UIScene life cycle, which apps built

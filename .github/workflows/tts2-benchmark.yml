@@ -2,8 +2,9 @@ name: Kitten TTS 2 on-device benchmark
 
 # Kitten TTS 2 on TestMu (LambdaTest) real devices: MLX on iPhones with three
 # decoders, ggml on Android phones. The model files come from
-# tools/kitten-tts-2-onnx/export.py and reach the devices through a LambdaTest
-# tunnel to the runner, since TestMu takes apps up to 1 GB. See benchmark/tts2.
+# tools/kitten-tts-2-onnx/export.py; TestMu takes apps up to 1 GB, so each device
+# job serves them from the runner at a temporary Cloudflare address (a quick
+# tunnel). A LambdaTest tunnel managed about 80 KB/s to one iPhone. See benchmark/tts2.
 
 on:
   push:
@@ -268,12 +269,23 @@ jobs:
           for _ in $(seq 1 20); do curl -fsS -o /dev/null http://127.0.0.1:8788/manifest.json && exit 0; sleep 1; done
           exit 1
 
-      - name: Start the LambdaTest tunnel
-        uses: LambdaTest/LambdaTest-tunnel-action@v2
-        with:
-          user: ${{ secrets.LT_USERNAME }}
-          accessKey: ${{ secrets.LT_ACCESS_KEY }}
-          tunnelName: tts2-${{ github.run_id }}-${{ matrix.slug }}
+      - id: tunnel
+        name: Open a temporary address for them
+        timeout-minutes: 5
+        run: |
+          curl -fsSL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared
+          nohup ./cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8788 > cloudflared.log 2>&1 &
+          url=""
+          for _ in $(seq 1 60); do
+            url="$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' cloudflared.log | head -1 || true)"
+            [ -n "$url" ] && break
+            sleep 1
+          done
+          [ -n "$url" ] || { cat cloudflared.log; exit 1; }
+          for _ in $(seq 1 30); do curl -fsS -o /dev/null "$url/manifest.json" && break; sleep 2; done
+          curl -fsS -o /dev/null "$url/manifest.json"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
 
       # WebdriverIO's worker dies on Node 22 ("write EINVAL"); the TestMu CI runs it on 20.
       - uses: actions/setup-node@v4
@@ -293,7 +305,7 @@ jobs:
           LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
           TESTMU_DEVICE: ${{ matrix.device }}
           TESTMU_VERSION: ${{ matrix.version }}
-          TESTMU_TUNNEL_NAME: tts2-${{ github.run_id }}-${{ matrix.slug }}
+          TTS2_BASE_URL: ${{ steps.tunnel.outputs.url }}
           TTS2_REPORT: reports/${{ matrix.slug }}.json
         run: npm test
 
