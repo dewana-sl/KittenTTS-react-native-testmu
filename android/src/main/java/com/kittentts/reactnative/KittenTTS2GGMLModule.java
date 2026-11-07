@@ -55,7 +55,7 @@ public final class KittenTTS2GGMLModule extends ReactContextBaseJavaModule {
     promise.resolve(LOADED && nativeSupported());
   }
 
-  /** "Vulkan0: <GPU>" or "CPU". The first call looks for the GPU. */
+  /** "Vulkan0: <GPU>", or "CPU (<why the GPU is not used>)". The first call looks for the GPU. */
   @ReactMethod
   public void device(Promise promise) {
     run(promise, "GGML_DEVICE_FAILED", () -> nativeDevice());

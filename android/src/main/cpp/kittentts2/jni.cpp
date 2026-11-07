@@ -23,6 +23,21 @@ namespace {
 
 const char * kTag = "KittenTTS2";
 
+/** ggml's own messages (ggml-vulkan's device report, its errors) go to logcat. */
+void logGgmlToLogcat() {
+    static const bool installed = [] {
+        ggml_log_set([](ggml_log_level level, const char * text, void *) {
+            const int priority = level == GGML_LOG_LEVEL_ERROR ? ANDROID_LOG_ERROR
+                               : level == GGML_LOG_LEVEL_WARN  ? ANDROID_LOG_WARN
+                               : level == GGML_LOG_LEVEL_DEBUG ? ANDROID_LOG_DEBUG
+                                                               : ANDROID_LOG_INFO;
+            __android_log_print(priority, "ggml", "%s", text);
+        }, nullptr);
+        return true;
+    }();
+    (void) installed;
+}
+
 std::vector<int> ints(JNIEnv * env, jintArray array) {
     std::vector<int> out(static_cast<size_t>(env->GetArrayLength(array)));
     env->GetIntArrayRegion(array, 0, static_cast<jsize>(out.size()), reinterpret_cast<jint *>(out.data()));
@@ -77,7 +92,10 @@ jboolean KT2_JNI(nativeSupported)(JNIEnv *, jclass) {
 
 jstring KT2_JNI(nativeDevice)(JNIEnv * env, jclass) {
     try {
-        return env->NewStringUTF(Engine::shared().device().c_str());
+        logGgmlToLogcat();
+        const std::string device = Engine::shared().device();
+        __android_log_print(ANDROID_LOG_INFO, kTag, "runs on %s", device.c_str());
+        return env->NewStringUTF(device.c_str());
     } catch (...) {
         rethrow(env);
         return nullptr;
@@ -98,6 +116,7 @@ void KT2_JNI(nativeLoad)(JNIEnv * env, jclass, jstring path, jintArray config, j
         lm.headStart = c[5];
         lm.ropeTheta = f[0];
         lm.rmsNormEps = f[1];
+        logGgmlToLogcat();
         const auto start = std::chrono::steady_clock::now();
         Engine::shared().load(text(env, path), lm);
         __android_log_print(ANDROID_LOG_INFO, kTag, "language model loaded on %s in %.2fs",
