@@ -80,15 +80,21 @@ try {
   process.exit(1);
 }
 
-// What the device logged about the app, for when it stops: crash and memory lines.
-async function deviceLog() {
+// What the device logged about the engines (which GPU, why not, GPU faults), and
+// when the app stopped, about the app itself: crash and memory lines.
+const ENGINE_LINES = /KittenTTS2|ggml|vulkan|Adreno|kgsl|Mali|DeviceLost|DEVICE_LOST|MLX|Fatal error|jetsam|lowmemorykiller|lmkd/i;
+const APP_LINES = /tts2bench|EXC_|Terminat|FATAL|SIGABRT|SIGSEGV/i;
+const CRASH_LINES = /ASI found|Fatal error|libc\+\+abi|terminating|Unable to build|program_source|DeviceLost|DEVICE_LOST|kgsl.*(fault|hang)|runs on|loaded on/i;
+async function deviceLog(withApp) {
   try {
     const types = await driver.getLogTypes();
     const lines = [];
     for (const type of types.filter(t => ['crashlog', 'syslog', 'logcat'].includes(t))) {
       const messages = (await driver.getLogs(type)).map(entry => String(entry.message));
-      const relevant = messages.filter(m => /tts2bench|jetsam|EXC_|Terminat|lowmemorykiller|lmkd|FATAL|SIGABRT|SIGSEGV|kittentts|MLX|ggml|Vulkan/i.test(m));
-      lines.push(`[${type}] ${relevant.length} of ${messages.length} lines`, ...relevant.slice(-40));
+      const relevant = messages.filter(m => ENGINE_LINES.test(m) || (withApp && APP_LINES.test(m)));
+      // The crash message itself first: later lines would push it out of the tail.
+      const crash = messages.filter(m => CRASH_LINES.test(m)).slice(0, 30);
+      lines.push(`[${type}] ${relevant.length} of ${messages.length} lines`, ...crash, '...', ...relevant.slice(-60));
     }
     return { types, lines };
   } catch (error) {
@@ -130,12 +136,13 @@ try {
 }
 if (!last?.done) {
   const reason = stopped || `No complete report within ${Math.round(TIMEOUT_MS / 60000)} minutes.`;
-  const log = await deviceLog();
+  const log = await deviceLog(true);
   save({ ...(last || {}), done: false, error: `${reason} Last status: ${last?.status ?? 'none'}`, deviceLog: log });
   console.error(reason);
   console.error(JSON.stringify(log, null, 2));
   await driver.deleteSession().catch(() => {});
   process.exit(1);
 }
+save({ ...last, deviceLog: await deviceLog(false) });
 await driver.deleteSession().catch(() => {});
 process.exit(0);
