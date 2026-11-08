@@ -1,5 +1,7 @@
 [
-  {"slug": "galaxy-s23", "device": "Galaxy S23", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]},
-  {"slug": "oneplus-11", "device": "OnePlus 11", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]},
-  {"slug": "galaxy-s24-ultra", "device": "Galaxy S24 Ultra", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]}
+  {"slug": "iphone-15", "device": "iPhone 15", "version": "17", "platform": "iOS"},
+  {"slug": "iphone-13", "device": "iPhone 13", "version": "17", "platform": "iOS"},
+  {"slug": "iphone-16", "device": "iPhone 16", "version": "18", "platform": "iOS"},
+  {"slug": "galaxy-s24-ultra", "device": "Galaxy S24 Ultra", "version": "14", "platform": "Android", "mode": "auto", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]},
+  {"slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "mode": "auto", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]}
 ]
