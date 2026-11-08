@@ -88,7 +88,16 @@ const char * knownGpuProblem(ggml_backend_dev_t dev) {
         // ggml-opencl ends the process when a kernel does not compile, which its
         // authors expect of the older Adreno 6xx drivers in phones; Qualcomm
         // verified it on the 7xx and 8xx.
-        const int model = adrenoModel(name);
+        int model = adrenoModel(name);
+#ifdef KITTENTTS2_VULKAN
+        // Some drivers name it only "QUALCOMM Adreno(TM)" (a OnePlus 11's Adreno 740):
+        // Vulkan's name for the same GPU has the number.
+        if (model == 0) {
+            eachVulkanDevice([&](const VkPhysicalDeviceProperties & properties) {
+                model = std::max(model, adrenoModel(properties.deviceName));
+            });
+        }
+#endif
         if (model >= 700 || std::strstr(name, "X1") || std::strstr(name, "X2")) return nullptr;
         return "ggml-opencl is verified on Adreno 7xx and newer only";
     }
