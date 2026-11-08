@@ -5,7 +5,8 @@
 //   kt2check lm <reference.json> <lm-ternary.safetensors>
 //   kt2check decoder <decoder-reference.safetensors> <decoder-mlx.safetensors> [out.wav]
 //
-// KITTENTTS2_DEVICE=cpu keeps everything on the CPU.
+// KITTENTTS2_DEVICE=cpu keeps everything on the CPU; =gpu uses a GPU the SDK leaves
+// alone by default (Adreno, Mali).
 
 #include <algorithm>
 #include <chrono>
@@ -54,8 +55,7 @@ std::vector<int> ints(const TensorView & tensor) {
 }
 
 std::unique_ptr<Runtime> makeRuntime() {
-    const char * device = std::getenv("KITTENTTS2_DEVICE");
-    auto runtime = std::make_unique<Runtime>(!(device && std::strcmp(device, "cpu") == 0), 0);
+    auto runtime = std::make_unique<Runtime>(gpuChoiceFromEnvironment(), 0);
     std::printf("device: %s\n", runtime->device().c_str());
     return runtime;
 }
@@ -203,7 +203,7 @@ int compareLanguageModel(const std::string & referencePath, const std::string & 
         return std::vector<int>(prompt.begin(), prompt.begin() + std::min<size_t>(length, prompt.size()));
     };
 
-    Runtime cpu(false, 0);
+    Runtime cpu(GpuChoice::Off, 0);
     LanguageModel onCpu(cpu, weightsPath, config);
     if (const char * env = std::getenv("KT2_LM_SWIGLU")) {
         const int length = std::atoi(env);
@@ -223,7 +223,7 @@ int compareLanguageModel(const std::string & referencePath, const std::string & 
         return 0;
     }
 
-    Runtime gpu(true, 0);
+    Runtime gpu(GpuChoice::Always, 0);
     LanguageModel onGpu(gpu, weightsPath, config);
     if (const char * env = std::getenv("KT2_LM_LAYERS")) {
         const int length = std::atoi(env);

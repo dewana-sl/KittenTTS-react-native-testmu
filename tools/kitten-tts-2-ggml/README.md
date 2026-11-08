@@ -49,8 +49,10 @@ kt2check lm-compare reference.json lm-ternary.safetensors
   (`KT2_LENGTHS=64,200`), per layer (`KT2_LM_LAYERS=64`), and prints the largest
   input to each down projection on the CPU (`KT2_LM_SWIGLU=297`).
 
-`KITTENTTS2_DEVICE=cpu` keeps everything on the CPU, and `KITTENTTS2_DEBUG=1` lists
-the nodes that fall back to the CPU, with the graph's splits and buffer sizes.
+`KITTENTTS2_DEVICE=cpu` keeps everything on the CPU, `KITTENTTS2_DEVICE=gpu` uses an
+Adreno or Mali GPU, which the engine otherwise leaves alone (`knownGpuProblem()` in
+`runtime.cpp`), and `KITTENTTS2_DEBUG=1` lists the nodes that fall back to the CPU,
+with the graph's splits and buffer sizes.
 
 ## What a GPU needs from the graphs
 
