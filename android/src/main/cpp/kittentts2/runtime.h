@@ -31,6 +31,7 @@ public:
     Runtime & operator=(const Runtime &) = delete;
 
     bool hasGpu() const { return gpu_ != nullptr; }
+    ggml_backend_t cpu() const { return cpu_; }
     /** "Vulkan0: <GPU name>", "GPUOpenCL: <GPU name>", or "CPU (<why the GPU is not used>)". */
     const std::string & device() const { return device_; }
     /** Where weights and caches live: the GPU's memory, or the CPU's. */
@@ -60,9 +61,14 @@ public:
     /** A tensor the caller fills after allocation. */
     ggml_tensor * input(ggml_type type, int64_t ne0, int64_t ne1 = 1, int64_t ne2 = 1);
     void expand(ggml_tensor * t) { ggml_build_forward_expand(graph, t); }
+    /** Run `t` on the CPU even when the GPU could. */
+    void onCpu(ggml_tensor * t) { cpuNodes_.push_back(t); }
     /** Allocate on `sched`, then the caller sets inputs and calls compute(). */
     void allocate(const Runtime & runtime, ggml_backend_sched_t sched);
     void compute(ggml_backend_sched_t sched);
+
+private:
+    std::vector<ggml_tensor *> cpuNodes_;
 };
 
 /**
