@@ -105,7 +105,7 @@ std::vector<float> get(ggml_tensor * tensor) {
 
 /** A scheduler for one call: its buffers are freed when the call ends, as the MLX decoder clears its cache. */
 struct Scheduler {
-    explicit Scheduler(const Runtime & runtime) : sched(runtime.newScheduler(kGraphSize)) {}
+    explicit Scheduler(const Runtime & runtime, bool cpuOnly = false) : sched(runtime.newScheduler(kGraphSize, cpuOnly)) {}
     ~Scheduler() { ggml_backend_sched_free(sched); }
     ggml_backend_sched_t sched;
 };
@@ -122,8 +122,11 @@ AudioDecoder::AudioDecoder(const Runtime & runtime, const std::string & path) : 
 
     ggml_init_params params{ggml_tensor_overhead() * (2 * file.tensors().size() + 64), nullptr, true};
     weightsCtx_ = ggml_init(params);
+    vocoderCtx_ = ggml_init(params);
+    vocoderOnCpu_ = runtime.hasGpu() && !runtime.gpuRunsSine();
     auto add = [&](const std::string & name, ggml_type type, std::vector<int64_t> ne) {
-        ggml_tensor * t = ggml_new_tensor(weightsCtx_, type, static_cast<int>(ne.size()), ne.data());
+        const bool vocoder = name.rfind("mel2wav.", 0) == 0 || endsWith(name, "stft.basis");
+        ggml_tensor * t = ggml_new_tensor(vocoder ? vocoderCtx_ : weightsCtx_, type, static_cast<int>(ne.size()), ne.data());
         ggml_set_name(t, name.c_str());
         tensors_[name] = t;
         return t;
@@ -156,6 +159,8 @@ AudioDecoder::AudioDecoder(const Runtime & runtime, const std::string & path) : 
     ggml_tensor * stft = add("stft.basis", GGML_TYPE_F32, {kFft, 1, 2 * kBins});
     ggml_tensor * istft = add("istft.basis", GGML_TYPE_F32, {2 * kBins, kFft});
     weights_ = allocateTensors(weightsCtx_, runtime.weightBuffer(), "audio decoder");
+    vocoderWeights_ = allocateTensors(
+        vocoderCtx_, vocoderOnCpu_ ? ggml_backend_get_default_buffer_type(runtime.cpu()) : runtime.weightBuffer(), "vocoder");
 
     for (const auto & [name, view] : file.tensors()) {
         ggml_tensor * t = tensors_.at(name);
@@ -214,6 +219,8 @@ AudioDecoder::AudioDecoder(const Runtime & runtime, const std::string & path) : 
 AudioDecoder::~AudioDecoder() {
     if (weights_) ggml_backend_buffer_free(weights_);
     if (weightsCtx_) ggml_free(weightsCtx_);
+    if (vocoderWeights_) ggml_backend_buffer_free(vocoderWeights_);
+    if (vocoderCtx_) ggml_free(vocoderCtx_);
 }
 
 ggml_tensor * AudioDecoder::meanVector(int64_t width) const {
@@ -600,7 +607,7 @@ std::vector<float> AudioDecoder::flow(const std::vector<int> & tokens, const std
 
 std::vector<float> AudioDecoder::predictF0(const std::vector<float> & mel) {
     const int64_t frames = static_cast<int64_t>(mel.size()) / kMels;
-    Scheduler scheduler(runtime_);
+    Scheduler scheduler(runtime_, vocoderOnCpu_);
     Graph g(4096);
     Builder b{*this, g, g.ctx};
     ggml_tensor * input = g.input(GGML_TYPE_F32, frames, kMels);
@@ -658,7 +665,7 @@ std::vector<float> AudioDecoder::vocoder(const std::vector<float> & mel, const s
     std::vector<float> spectrumFrames;
     int64_t count = 0;
     {
-        Scheduler scheduler(runtime_);
+        Scheduler scheduler(runtime_, vocoderOnCpu_);
         Graph g(kGraphSize);
         Builder b{*this, g, g.ctx};
         ggml_tensor * melInput = g.input(GGML_TYPE_F32, frames, kMels);
