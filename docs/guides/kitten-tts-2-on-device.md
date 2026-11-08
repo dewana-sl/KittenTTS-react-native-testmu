@@ -252,6 +252,7 @@ layer. On real phones (on TestMu, in November 2026), on the same 8 sentences:
 | Phone | GPU | On the GPU | Real-time factor |
 | --- | --- | --- | --- |
 | Galaxy S24 Ultra (Snapdragon 8 Gen 3) | Adreno 750 | OpenCL: right | 2.31, the decoder 0.76 (ONNX Runtime: 2.68 and 1.11) |
+| Galaxy S24 (Snapdragon 8 Gen 3) | Adreno 750 | OpenCL: right | 2.53, from 2.22 on the first sentence to 3.08 on the eighth as it warmed |
 | Galaxy S24 (Exynos 2400) | Xclipse 940 | Vulkan: right | 8.27: the decoder is fast (0.52), the language model slow |
 | Pixel 8 | Mali-G715 | Vulkan: right | 18 (one sentence): about 3 times slower than ONNX Runtime on its CPU (5.42) |
 | Galaxy S24, OnePlus 11 | Adreno 750, Adreno 740 | Vulkan | Lost the device (`ErrorDeviceLost`) on the 750, made no progress on the 740 |
@@ -259,6 +260,8 @@ layer. On real phones (on TestMu, in November 2026), on the same 8 sentences:
 
 So by default the engine uses the GPU only where it is faster than the CPU:
 OpenCL on Adreno 7xx and newer, and Vulkan on GPUs that have not been measured.
+Only the Adreno 750 was measured through OpenCL; ggml lists the 7xx and 8xx as
+supported.
 On Adreno 6xx, Mali and Xclipse GPUs `tts.device` is `'cpu'`, `'auto'` uses ONNX
 Runtime and `backend: 'ggml'` runs on the CPU. Older Adreno GPUs never use OpenCL:
 ggml's OpenCL backend ends the app when a kernel does not compile, which its
@@ -368,6 +371,7 @@ sentences:
 | iPhone 15, iOS 17 | `'mlx'` | 0.92 | 13.1 s |
 | iPhone 16, iOS 18 | `'mlx'` | 0.86 | 11.7 s |
 | Galaxy S24 Ultra, Android 14 | `'auto'`: ggml on the GPU, OpenCL | 2.31 | 21.1 s |
+| Galaxy S24 (Snapdragon), Android 14 | `'auto'`: ggml on the GPU, OpenCL | 2.53 | 21.4 s |
 | Galaxy S24 Ultra, Android 14 | `'onnx'`, `'int8'` | 2.68 | 14.1 s |
 | Pixel 8, Android 14 | `'auto'`: ONNX Runtime, `'int8'` | 5.42 | 17.0 s |
 | Galaxy S21, Android 12 | `'ggml'`, on the CPU | 5.73 | 20.2 s |
