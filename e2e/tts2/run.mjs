@@ -147,8 +147,10 @@ async function runApp(address, timeoutMs, onReport = () => {}) {
   return { last, stopped };
 }
 
-/** Starts the app again in a new process, with `env` ("NAME=value;...") in its environment (scripts/gpu-env.py). */
+/** Starts the app again in a new process, with `env` ("NAME=value,...") in its environment (scripts/gpu-env.py). */
 async function restartWith(env) {
+  // The engine reads its settings once per process, and startActivity's own stop did not always end it.
+  await driver.terminateApp(BUNDLE_ID).catch(() => {});
   const extras = env ? [['s', 'ggml_env', env]] : [];
   try {
     await driver.execute('mobile: startActivity', { intent: `${BUNDLE_ID}/.MainActivity`, stop: true, wait: true, extras });
@@ -184,7 +186,7 @@ if (SWEEP.length) {
     try {
       await restartWith(env);
       const { last, stopped } = await runApp(`${base}#gpu-check`, SWEEP_TIMEOUT_MS);
-      entry = { env, gpu: last?.gpu, device: last?.device, steps: last?.steps ?? [], done: Boolean(last?.done) };
+      entry = { env, process: last?.process, gpu: last?.gpu, device: last?.device, steps: last?.steps ?? [], done: Boolean(last?.done) };
       if (!last?.done) Object.assign(entry, { error: `${stopped} Last status: ${last?.status ?? 'none'}`, deviceLog: await deviceLog(true) });
     } catch (error) {
       entry = { env, done: false, error: `Could not start the app: ${error?.message ?? error}` };

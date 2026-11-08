@@ -49,14 +49,14 @@ if (gpus.length) lines.push('', '## Where ggml runs', '', ...gpus.map(r => `- **
 // The short GPU checks: one app start per set of ggml-vulkan settings.
 const swept = reports.filter(r => r.sweep?.length);
 if (swept.length) {
-  lines.push('', '## GPU settings tried', '', '| Device | Settings | Runs on | RTF | Decoder RTF | Audio (rms, zero crossings) | Error |', '| --- | --- | --- | ---: | ---: | --- | --- |');
+  lines.push('', '## GPU settings tried', '', '| Device | Settings | Process (id, settings it got) | Runs on | RTF | Decoder RTF | Audio (rms, zero crossings) | Error |', '| --- | --- | --- | --- | ---: | ---: | --- | --- |');
   for (const r of swept) {
     for (const e of r.sweep) {
       const one = (e.steps || []).find(s => s.name === 'one sentence');
       const failedStep = (e.steps || []).find(s => !s.ok);
       const audio = one?.ok ? `${one.detail.audioOk ? 'ok' : 'bad'} (${one.detail.rms[0]}, ${one.detail.zcr?.[0] ?? '–'})` : '–';
       const error = e.error || failedStep?.error || '';
-      lines.push(`| ${r.deviceName} | ${e.env || 'none'} | ${e.device || '–'} | ${one?.ok ? fmt(one.detail.rtf) : '–'} | ${one?.ok ? fmt(one.detail.decoderRtf, 3) : '–'} | ${audio} | ${short(error).replace(/\|/g, '/').replace(/\n/g, ' ')} |`);
+      lines.push(`| ${r.deviceName} | ${e.env || 'none'} | ${e.process?.native || '–'} | ${e.device || '–'} | ${one?.ok ? fmt(one.detail.rtf) : '–'} | ${one?.ok ? fmt(one.detail.decoderRtf, 3) : '–'} | ${audio} | ${short(error).replace(/\|/g, '/').replace(/\n/g, ' ')} |`);
     }
   }
 }

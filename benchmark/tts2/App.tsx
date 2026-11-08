@@ -39,6 +39,8 @@ const LONG = 'The first part of this text is long enough that the model splits i
 const STREAMED = `${LONG} And then the second chunk begins here, with its own sentences, which the app can start `
   + 'playing as soon as it arrives, while the next one is still being generated on the device.';
 const ROUNDS = 5;
+// When this JavaScript started: with the native process id below, shows whether a restart was a new process.
+const JS_STARTED = new Date().toISOString();
 
 type Step = { name: string; ok: boolean; seconds: number; detail?: unknown; error?: string };
 
@@ -83,10 +85,13 @@ async function run(base: string, publish: (report: object) => void, gpuCheck = f
     device: '' as string,
     /** What the native engine says it runs on, and why it is not the GPU. */
     gpu: '' as string,
+    /** Android: "<process id> <settings it started with>" (scripts/gpu-env.py), and when the JavaScript started. */
+    process: { native: '', js: JS_STARTED },
     status: 'starting',
     done: false,
     steps: [] as Step[],
   };
+  if (!IOS) report.process.native = await RNFS.readFile(`${RNFS.DocumentDirectoryPath}/ggml_env.txt`, 'utf8').catch(() => '');
   let lastPublish = 0;
   const show = (force = false) => {
     if (!force && Date.now() - lastPublish < 1000) return;
@@ -269,7 +274,16 @@ async function run(base: string, publish: (report: object) => void, gpuCheck = f
   if (tts && decodeRaw && codes.short && codes.long) {
     const decode = decodeRaw;
     await step('decoder only', async () => {
-      const random = { next: () => 0.25 };
+      // The native decoders take a seed from next(); the ONNX one takes its noise from fillNormal().
+      let state = 3;
+      const uniform = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) + 1) / 0x100000001;
+      const random = {
+        next: () => 0.25,
+        fillNormal: (out: Float32Array) => {
+          for (let i = 0; i < out.length; i += 1) out[i] = Math.sqrt(-2 * Math.log(uniform())) * Math.cos(2 * Math.PI * uniform());
+          return out;
+        },
+      };
       const timings: Record<string, { short: number[]; long: number[] }> = {};
       let seconds = { short: 0, long: 0 };
       for (let r = 0; r < ROUNDS; r += 1) {

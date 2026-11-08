@@ -1,10 +1,28 @@
 [
   {
-    "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "mode": "auto",
-    "sweep": ["", "KITTENTTS2_DEVICE=gpu"]
+    "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "full": false,
+    "sweep": [
+      "",
+      "KITTENTTS2_DEVICE=gpu",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_MAX_NODES_PER_SUBMIT=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_F16=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_COOPMAT=1,GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_FUSION=1,GGML_VK_DISABLE_GRAPH_OPTIMIZE=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_PREFER_HOST_MEMORY=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_MAX_NODES_PER_SUBMIT=1,GGML_VK_DISABLE_F16=1,GGML_VK_DISABLE_COOPMAT=1,GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1,GGML_VK_DISABLE_FUSION=1,GGML_VK_DISABLE_GRAPH_OPTIMIZE=1"
+    ]
   },
   {
-    "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "mode": "auto",
-    "sweep": ["", "KITTENTTS2_DEVICE=gpu"]
+    "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "full": false,
+    "sweep": [
+      "",
+      "KITTENTTS2_DEVICE=gpu",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_MAX_NODES_PER_SUBMIT=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_F16=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_COOPMAT=1,GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_FUSION=1,GGML_VK_DISABLE_GRAPH_OPTIMIZE=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_PREFER_HOST_MEMORY=1",
+      "KITTENTTS2_DEVICE=gpu,GGML_VK_MAX_NODES_PER_SUBMIT=1,GGML_VK_DISABLE_F16=1,GGML_VK_DISABLE_COOPMAT=1,GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1,GGML_VK_DISABLE_FUSION=1,GGML_VK_DISABLE_GRAPH_OPTIMIZE=1"
+    ]
   }
 ]
