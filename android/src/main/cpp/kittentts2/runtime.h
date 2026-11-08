@@ -32,6 +32,13 @@ public:
 
     bool hasGpu() const { return gpu_ != nullptr; }
     ggml_backend_t cpu() const { return cpu_; }
+    /**
+     * The language model's cache type. float16, except on ggml-opencl: on Adreno
+     * 7xx it runs flash attention only when the cache's type is the queries'
+     * (float32), and an attention on the CPU in every layer of every token step
+     * would cost more than the GPU saves.
+     */
+    ggml_type cacheType() const { return openCL_ ? GGML_TYPE_F32 : GGML_TYPE_F16; }
     /** "Vulkan0: <GPU name>", "GPUOpenCL: <GPU name>", or "CPU (<why the GPU is not used>)". */
     const std::string & device() const { return device_; }
     /** Where weights and caches live: the GPU's memory, or the CPU's. */
@@ -44,6 +51,7 @@ public:
 private:
     ggml_backend_t gpu_ = nullptr;
     ggml_backend_t cpu_ = nullptr;
+    bool openCL_ = false;
     std::string device_;
 };
 

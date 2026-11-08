@@ -146,6 +146,7 @@ Runtime::Runtime(GpuChoice choice, int threads) {
             reason += (reason.empty() ? "" : "; ") + std::string(name) + ": " + error.what();
         }
         if (gpu_) {
+            openCL_ = backendOf(dev) == "OpenCL";
             device_ = std::string(ggml_backend_dev_name(dev)) + ": " + name;
             break;
         }
