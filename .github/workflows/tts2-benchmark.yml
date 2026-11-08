@@ -52,7 +52,7 @@ jobs:
         id: cache
         with:
           path: bundle
-          key: tts2-models-${{ env.MODEL_REVISION }}-${{ hashFiles('tools/kitten-tts-2-onnx/*.py', 'tools/kitten-tts-2-onnx/requirements.txt', 'benchmark/tts2/scripts/add-test-decoder.py') }}
+          key: tts2-models-onnx-${{ env.MODEL_REVISION }}-${{ hashFiles('tools/kitten-tts-2-onnx/*.py', 'tools/kitten-tts-2-onnx/requirements.txt', 'benchmark/tts2/scripts/add-test-decoder.py') }}
 
       - uses: actions/setup-python@v5
         if: steps.cache.outputs.cache-hit != 'true'
@@ -84,8 +84,7 @@ jobs:
         run: |
           python tools/kitten-tts-2-onnx/export.py --repo kitten-tts-2 --out bundle
           python benchmark/tts2/scripts/add-test-decoder.py bundle
-          # The devices run the native engines; ONNX Runtime's files stay behind.
-          rm -f bundle/*.onnx bundle/lm.onnx.data
+          # ONNX Runtime's files too (2 GB): Android runs it when the SDK picks it ("mode": "auto").
           ls -la bundle
 
       - uses: actions/upload-artifact@v4
@@ -328,9 +327,11 @@ jobs:
           TESTMU_VERSION: ${{ matrix.version }}
           TTS2_BASE_URL: ${{ steps.tunnel.outputs.url }}
           TTS2_REPORT: reports/${{ matrix.slug }}.json
-          # Android: ggml-vulkan settings to try, one app start each, and whether to skip the full run.
+          # Android: settings to try (environment variables), one app start each, whether to skip the
+          # full run, and its mode ("auto": the SDK picks the engine).
           TTS2_SWEEP: ${{ toJSON(matrix.sweep) }}
           TTS2_FULL: ${{ matrix.full }}
+          TTS2_MODE: ${{ matrix.mode }}
         run: npm test
 
       - name: Keep a report even when the device never sent one

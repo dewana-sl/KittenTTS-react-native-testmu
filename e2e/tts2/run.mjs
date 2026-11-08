@@ -105,6 +105,8 @@ async function deviceLog(withApp) {
 
 const SWEEP = JSON.parse(process.env.TTS2_SWEEP || 'null') || [];
 const FULL = process.env.TTS2_FULL !== 'false';
+// The full run's mode, typed after the address: "auto" lets the SDK pick the engine.
+const MODE = process.env.TTS2_MODE || '';
 const SWEEP_TIMEOUT_MS = 6 * 60 * 1000;
 
 /** Types the address into the app, taps Start and reads its report until it is done or stops. */
@@ -162,7 +164,7 @@ async function restartWith(env) {
 let result = {};
 let failed = false;
 if (FULL) {
-  const { last, stopped } = await runApp(base, TIMEOUT_MS, report => save(report));
+  const { last, stopped } = await runApp(MODE ? `${base}#${MODE}` : base, TIMEOUT_MS, report => save(report));
   if (last?.done) {
     result = { ...last, deviceLog: await deviceLog(false) };
   } else {

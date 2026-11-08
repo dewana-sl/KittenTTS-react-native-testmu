@@ -1,30 +1,10 @@
 [
-  { "slug": "iphone-15", "device": "iPhone 15", "version": "17", "platform": "iOS" },
-  { "slug": "iphone-13", "device": "iPhone 13", "version": "17", "platform": "iOS" },
-  { "slug": "iphone-16", "device": "iPhone 16", "version": "18", "platform": "iOS" },
   {
-    "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "full": false,
-    "sweep": [
-      "",
-      "GGML_VK_MAX_NODES_PER_SUBMIT=1",
-      "GGML_VK_DISABLE_F16=1",
-      "GGML_VK_DISABLE_COOPMAT=1;GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1",
-      "GGML_VK_DISABLE_FUSION=1;GGML_VK_DISABLE_GRAPH_OPTIMIZE=1",
-      "GGML_VK_PREFER_HOST_MEMORY=1",
-      "GGML_VK_MAX_NODES_PER_SUBMIT=1;GGML_VK_DISABLE_F16=1;GGML_VK_DISABLE_COOPMAT=1;GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1;GGML_VK_DISABLE_FUSION=1;GGML_VK_DISABLE_GRAPH_OPTIMIZE=1"
-    ]
+    "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "mode": "auto",
+    "sweep": ["", "KITTENTTS2_DEVICE=gpu"]
   },
   {
-    "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "full": false,
-    "sweep": [
-      "",
-      "GGML_VK_MAX_NODES_PER_SUBMIT=1",
-      "GGML_VK_DISABLE_F16=1",
-      "GGML_VK_DISABLE_COOPMAT=1;GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1",
-      "GGML_VK_DISABLE_FUSION=1;GGML_VK_DISABLE_GRAPH_OPTIMIZE=1",
-      "GGML_VK_PREFER_HOST_MEMORY=1",
-      "GGML_VK_MAX_NODES_PER_SUBMIT=1;GGML_VK_DISABLE_F16=1;GGML_VK_DISABLE_COOPMAT=1;GGML_VK_DISABLE_INTEGER_DOT_PRODUCT=1;GGML_VK_DISABLE_FUSION=1;GGML_VK_DISABLE_GRAPH_OPTIMIZE=1"
-    ]
-  },
-  { "slug": "android-12", "device": "Galaxy Note10", "version": "12", "platform": "Android", "full": false, "sweep": [""] }
+    "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "mode": "auto",
+    "sweep": ["", "KITTENTTS2_DEVICE=gpu"]
+  }
 ]

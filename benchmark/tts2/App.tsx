@@ -70,8 +70,9 @@ function audioCheck(samples: Float32Array) {
 /**
  * The whole benchmark, or with `gpuCheck` only a load and one sentence: the
  * runner restarts the app with different ggml-vulkan settings and runs that.
+ * `backend` 'auto' checks what the SDK picks on its own.
  */
-async function run(base: string, publish: (report: object) => void, gpuCheck = false) {
+async function run(base: string, publish: (report: object) => void, gpuCheck = false, backend = BACKEND) {
   const constants = Platform.constants as Record<string, unknown>;
   const report = {
     app: 'kitten-tts-2-benchmark',
@@ -114,7 +115,7 @@ async function run(base: string, publish: (report: object) => void, gpuCheck = f
     let downloadEnded = 0;
     let downloading = false;
     const tts: any = await KittenTTS.create({
-      model: 'KittenML/kitten-tts-2', modelBaseURL: base, storageDirectory: STORAGE, backend: BACKEND, decoder,
+      model: 'KittenML/kitten-tts-2', modelBaseURL: base, storageDirectory: STORAGE, backend, decoder,
     } as any, (fraction: number, info: any) => {
       if (info?.stage === 'downloading') downloading = true;
       if (info?.stage === 'complete' || info?.stage === 'cached') {
@@ -132,7 +133,7 @@ async function run(base: string, publish: (report: object) => void, gpuCheck = f
     const ggml = (NativeModules as any).KittenTTS2GGML;
     if (!IOS && ggml?.device) report.gpu = await ggml.device().catch((error: unknown) => message(error));
     const files = (tts.state.manifest.files as Array<{ path: string; size: number; backend?: string; decoder?: string }>)
-      .filter(f => (!f.backend || f.backend === 'native') && (!f.decoder || f.decoder === decoder))
+      .filter(f => (!f.backend || f.backend === (tts.backend === 'onnx' ? 'onnx' : 'native')) && (!f.decoder || f.decoder === decoder))
       .filter(f => !downloaded.has(f.path));
     files.forEach(f => downloaded.add(f.path));
     const megabytes = files.reduce((sum, f) => sum + f.size, 0) / 1e6;
@@ -313,10 +314,10 @@ export default function App() {
   const start = () => {
     if (started.current || !base.trim()) return;
     started.current = true;
-    // "<address>#gpu-check" runs only the short GPU check.
+    // "<address>#gpu-check" runs only the short GPU check; "<address>#auto" lets the SDK pick the engine.
     const [address, mode] = base.trim().split('#');
     activateKeepAwakeAsync().catch(() => {}).finally(() => {
-      run(address.replace(/\/+$/, ''), report => setText(JSON.stringify(report)), mode === 'gpu-check')
+      run(address.replace(/\/+$/, ''), report => setText(JSON.stringify(report)), mode === 'gpu-check', mode === 'auto' ? 'auto' : BACKEND)
         .catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
     });
   };
