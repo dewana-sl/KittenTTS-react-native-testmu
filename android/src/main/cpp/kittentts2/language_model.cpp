@@ -13,7 +13,7 @@ namespace kt2 {
 namespace {
 
 constexpr int kQ4Block = 32;
-constexpr float kDownScale = 32;
+constexpr float kScale = 32;
 constexpr int kQ4BlockBytes = 2 + kQ4Block / 2;   // fp16 d, then 16 bytes of nibbles
 
 struct TritTable {
@@ -300,7 +300,7 @@ std::vector<float> LanguageModel::forward(const std::vector<float> & embeddings,
         // Scaled like the down projection below: in the last layer the output
         // reaches about 64,000, the edge of float16, which ggml-opencl's Adreno
         // kernels hold it in (it came out infinite at some prompt positions).
-        x = ggml_add(ctx, x, ggml_scale(ctx, matmul(ctx, layer.o, ggml_scale(ctx, attended, 1.0f / kDownScale)), kDownScale));
+        x = ggml_add(ctx, x, ggml_scale(ctx, matmul(ctx, layer.o, ggml_scale(ctx, attended, 1.0f / kScale)), kScale));
 
         ggml_tensor * m = ggml_mul(ctx, ggml_rms_norm(ctx, x, c.rmsNormEps), layer.postAttentionNorm);
         ggml_tensor * mlp = ggml_swiglu_split(ctx, matmul(ctx, layer.gate, m), matmul(ctx, layer.up, m));
@@ -308,7 +308,10 @@ std::vector<float> LanguageModel::forward(const std::vector<float> & embeddings,
         // layers, past float16, which GPU matmuls hold their inputs in: multiply by
         // a power of two before and after, which is exact (only values far below
         // what matters lose precision).
-        ggml_tensor * mlpOut = ggml_scale(ctx, matmul(ctx, layer.down, ggml_scale(ctx, mlp, 1.0f / kDownScale)), kDownScale);
+        // ggml-opencl holds the product itself in float16 too, and the last layer's
+        // reaches about two million: 1/256 there.
+        const float downScale = runtime_.openCL() ? 256 : kScale;
+        ggml_tensor * mlpOut = ggml_scale(ctx, matmul(ctx, layer.down, ggml_scale(ctx, mlp, 1.0f / downScale)), downScale);
         x = ggml_add(ctx, x, mlpOut);
         if (i == probeLayer) {
             ggml_tensor * parts[] = {x, attended, mlpOut, q, k, v, mlp};

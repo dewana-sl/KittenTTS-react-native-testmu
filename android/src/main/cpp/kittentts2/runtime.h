@@ -39,6 +39,8 @@ public:
      * would cost more than the GPU saves.
      */
     ggml_type cacheType() const { return openCL_ ? GGML_TYPE_F32 : GGML_TYPE_F16; }
+    /** Whether the GPU is ggml-opencl's (Adreno), whose kernels hold matrix products in float16. */
+    bool openCL() const { return openCL_; }
     /** "Vulkan0: <GPU name>", "GPUOpenCL: <GPU name>", or "CPU (<why the GPU is not used>)". */
     const std::string & device() const { return device_; }
     /** Where weights and caches live: the GPU's memory, or the CPU's. */

@@ -63,17 +63,21 @@ std::vector<float> hannWindow() {
     return window;
 }
 
-/** Relative positions length - 1 down to -(length - 1), sines and cosines interleaved: [512, 2L - 1]. */
+/**
+ * Relative positions length - 1 down to -(length - 1), sines and cosines
+ * interleaved, after a column of zeros: [512, 2L]. The zeros become the zero
+ * score in front of each row that Transformer-XL's relative shift needs.
+ */
 std::vector<float> positionalEncoding(int64_t length, int dims = 512) {
     std::vector<float> div(dims / 2);
     for (int i = 0; i < dims / 2; i++) div[i] = static_cast<float>(std::exp(2.0 * i * -(std::log(10000.0) / dims)));
-    std::vector<float> out(static_cast<size_t>((2 * length - 1) * dims));
+    std::vector<float> out(static_cast<size_t>(2 * length * dims), 0.0f);
     for (int64_t p = 0; p < 2 * length - 1; p++) {
         const auto position = static_cast<float>(length - 1 - p);
         for (int i = 0; i < dims / 2; i++) {
             const float angle = position * div[i];
-            out[p * dims + 2 * i] = std::sin(angle);
-            out[p * dims + 2 * i + 1] = std::cos(angle);
+            out[(p + 1) * dims + 2 * i] = std::sin(angle);
+            out[(p + 1) * dims + 2 * i + 1] = std::cos(angle);
         }
     }
     return out;
@@ -320,12 +324,20 @@ struct AudioDecoder::Builder {
         }
         const int64_t length = x->ne[1];
         const int padding = std::max(left, right);
-        // im2col of the channels-first input, [in * kernel, time'], then one matmul,
-        // which leaves the result channels-last.
-        ggml_tensor * columns = ggml_im2col(ctx, kernel, ggml_cont(ctx, ggml_transpose(ctx, x)), 1, 0, padding, 0, 1, 0,
-                                            false, GGML_TYPE_F32);
-        ggml_tensor * matrix = ggml_reshape_2d(ctx, kernel, size * kernel->ne[1], kernel->ne[2]);
-        ggml_tensor * y = matmul(ctx, matrix, ggml_reshape_2d(ctx, columns, columns->ne[0], columns->ne[1]));
+        ggml_tensor * channelsFirst = ggml_cont(ctx, ggml_transpose(ctx, x));
+        ggml_tensor * y = nullptr;
+        if (decoder.runtime_.openCL()) {
+            // ggml-opencl's im2col takes about 30 ms here on an Adreno 750, its
+            // direct convolution a tenth of that: convolve channels-first, then turn back.
+            ggml_tensor * input = ggml_reshape_4d(ctx, channelsFirst, channelsFirst->ne[0], 1, channelsFirst->ne[1], 1);
+            y = ggml_cont(ctx, ggml_transpose(ctx, convolve(input, kernel, 1, padding, 1)));
+        } else {
+            // im2col of the channels-first input, [in * kernel, time'], then one matmul,
+            // which leaves the result channels-last.
+            ggml_tensor * columns = ggml_im2col(ctx, kernel, channelsFirst, 1, 0, padding, 0, 1, 0, false, GGML_TYPE_F32);
+            ggml_tensor * matrix = ggml_reshape_2d(ctx, kernel, size * kernel->ne[1], kernel->ne[2]);
+            y = matmul(ctx, matrix, ggml_reshape_2d(ctx, columns, columns->ne[0], columns->ne[1]));
+        }
         const int64_t outLength = length + left + right - size + 1;
         if (outLength != y->ne[1]) {
             y = ggml_view_2d(ctx, y, y->ne[0], outLength, y->nb[1], static_cast<size_t>(padding - left) * y->nb[1]);
@@ -362,12 +374,12 @@ struct AudioDecoder::Builder {
         ggml_tensor * qu = ggml_add(ctx, q, ggml_reshape_3d(ctx, w(p + ".self_attn.pos_bias_u"), dk, heads, 1));
         ggml_tensor * qv = ggml_add(ctx, q, ggml_reshape_3d(ctx, w(p + ".self_attn.pos_bias_v"), dk, heads, 1));
         const float scale = 1.0f / std::sqrt(static_cast<float>(dk));
-        // The position scores of every head, [2L-1, L, heads], then Transformer-XL's
-        // relative shift: a zero column in front, and each query's row read L
-        // elements further on. Flash attention adds them, scaled, to the content
-        // scores: softmax((q_u k + q_v pe) / sqrt(dk)) v.
+        // The position scores of every head, [2L, L, heads], then Transformer-XL's
+        // relative shift: each query's row read L elements further on, after the
+        // zero score that pos's zero column gives (ggml_pad on ggml-opencl took
+        // 50 ms). Flash attention adds them, scaled, to the content scores:
+        // softmax((q_u k + q_v pe) / sqrt(dk)) v.
         ggml_tensor * bd = matmul(ctx, ggml_cont(ctx, byHead(pe)), ggml_cont(ctx, byHead(qv)));
-        bd = ggml_pad_ext(ctx, bd, 1, 0, 0, 0, 0, 0, 0, 0);
         bd = ggml_view_3d(ctx, bd, length, length, heads, (2 * length - 1) * sizeof(float), bd->nb[2], length * sizeof(float));
         ggml_tensor * mask = ggml_cast(ctx, ggml_scale(ctx, ggml_cont(ctx, bd), scale), GGML_TYPE_F16);
         ggml_tensor * attended = attention(qu, k, v, mask, scale);
@@ -530,8 +542,8 @@ std::vector<float> AudioDecoder::flow(const std::vector<int> & tokens, const std
     ggml_context * ctx = g.ctx;
 
     ggml_tensor * ids = g.input(GGML_TYPE_I32, count);
-    ggml_tensor * pos = g.input(GGML_TYPE_F32, 512, 2 * count - 1);
-    ggml_tensor * upPos = g.input(GGML_TYPE_F32, 512, 2 * frames - 1);
+    ggml_tensor * pos = g.input(GGML_TYPE_F32, 512, 2 * count);
+    ggml_tensor * upPos = g.input(GGML_TYPE_F32, 512, 2 * frames);
     ggml_tensor * speaker = g.input(GGML_TYPE_F32, static_cast<int64_t>(embedding.size()));
     ggml_tensor * cond = g.input(GGML_TYPE_F32, kMels, frames);
     ggml_tensor * start = g.input(GGML_TYPE_F32, kMels, frames);
