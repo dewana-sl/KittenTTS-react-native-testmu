@@ -41,9 +41,10 @@ export interface KittenTTS2OnDeviceCreateOptions {
   /**
    * Where the models run, as the Python package's `backend=`: `'mlx'` on the GPU
    * (iOS 17 and later, in an app built with the SDK's MLX module), `'ggml'` on
-   * the GPU through Vulkan (Android, in an app built with the SDK's ggml engine;
-   * on the CPU when the phone has no GPU it can use, which includes Adreno and
-   * Mali GPUs), `'onnx'` on the CPU, or
+   * the GPU through OpenCL on Adreno 7xx and newer or Vulkan elsewhere (Android,
+   * in an app built with the SDK's ggml engine; on the CPU when the phone has no
+   * GPU it is faster on, such as Mali, Xclipse and older Adreno GPUs), `'onnx'`
+   * on the CPU, or
    * `'auto'` (the default): the native engine when it runs on the GPU, else ONNX.
    */
   backend?: KittenTTS2Backend;
