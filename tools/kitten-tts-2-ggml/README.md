@@ -49,18 +49,27 @@ kt2check lm-compare reference.json lm-ternary.safetensors
   (`KT2_LENGTHS=64,200`), per layer (`KT2_LM_LAYERS=64`), and prints the largest
   input to each down projection on the CPU (`KT2_LM_SWIGLU=297`).
 
-`KITTENTTS2_DEVICE=cpu` keeps everything on the CPU, `KITTENTTS2_DEVICE=gpu` uses an
-Adreno or Mali GPU, which the engine otherwise leaves alone (`knownGpuProblem()` in
-`runtime.cpp`), and `KITTENTTS2_DEBUG=1` lists the nodes that fall back to the CPU,
-with the graph's splits and buffer sizes.
-`KITTENTTS2_CHECK=<file>` runs every graph one node at a time and checks each GPU
-node against the CPU on the same inputs, for a GPU that gives wrong results or
-fails (`kittentts2/gpu_check.h`); it works in an app too.
+`KITTENTTS2_DEVICE=cpu` keeps everything on the CPU, `KITTENTTS2_DEVICE=gpu` uses a
+GPU the engine otherwise leaves alone (Vulkan on Adreno, Mali or Xclipse;
+`knownGpuProblem()` in `runtime.cpp`), `KITTENTTS2_GPU_BACKEND=Vulkan` or `OpenCL`
+takes only that backend, and `KITTENTTS2_DEBUG=1` lists the nodes that fall back
+to the CPU, with the graph's splits and buffer sizes.
+
+`KITTENTTS2_CHECK=<file>` runs every graph one node at a time, for a GPU that
+gives wrong results or fails (`kittentts2/gpu_check.h`). It works in an app too:
+- first, ggml_mul_mat in each shape class (small, medium and large tiles,
+  matrix-vector) in float32, float16 and Q4_0, against the CPU;
+- in the first graph of each size, every GPU node again on the CPU from the same
+  inputs, and any input that changed between the node that made it and the one
+  reading it (a shader writing past its tensor);
+- the node a GPU failed in, if it fails;
+- and, in `<file>.ops`, the time per op on the GPU and the CPU.
 
 ## What a GPU needs from the graphs
 
-Three things in ggml's Vulkan backend shaped how the graphs are written. Keep them
-in mind when changing them, and rerun these checks on the GPU:
+These things in ggml's GPU backends shaped how the graphs are written. Keep them
+in mind when changing them, and rerun these checks on the GPU (on a phone, with
+`KITTENTTS2_CHECK` in the benchmark app):
 
 - **Matrix products sum in float16 by default** on GPUs that have it. `matmul()`
   in `runtime.h` asks for float32; without it the multi-row prefill goes wrong
@@ -76,3 +85,21 @@ in mind when changing them, and rerun these checks on the GPU:
   the writes, which corrupts whatever comes next in memory. The decoder avoids
   those ops: `layerNorm()` is a matmul for the mean plus `ggml_rms_norm`, and
   attention is `ggml_flash_attn_ext`.
+- **ggml-vulkan's small-tile matrix products are wrong on Mali** (a Mali-G715)
+  when the first matrix has 32 rows or fewer, in every type. `layerNorm()` takes
+  its mean as a matrix-vector product (x's rows by 1/C), and the inverse STFT's
+  16-row product runs on the CPU (`Graph::onCpu`). Do not add another.
+- **ggml-opencl (Adreno) holds matrix products in float16, sums and output.** The
+  last layer's output projection reaches about 64,000 and its down projection
+  about two million, so both are scaled by a power of two around the product
+  (1/32, and 1/256 for the down projection on OpenCL).
+- **ggml-opencl on Adreno 7xx runs flash attention only for matching types**, so
+  the language model's cache is float32 there (`Runtime::cacheType()`); a float16
+  cache sent the attention of every layer of every token to the CPU.
+- **ggml-opencl has no `ggml_sin`**, which the vocoder's snake activations need in
+  every block: the vocoder's weights live in CPU memory and it runs on the CPU
+  (`Runtime::gpuRunsSine()`). Its `im2col` and `ggml_pad` are slow (30 and 50 ms
+  on an Adreno 750), so `convCL()` uses its direct convolution, and the
+  relative-position scores get their zero column from the position encoding.
+- **ggml's scheduler places an op by its weights only when the weight itself is
+  the op's input**: through a reshape it follows its neighbours instead.

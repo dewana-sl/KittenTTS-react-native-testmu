@@ -173,9 +173,10 @@ for await (const chunk of tts.generateStreaming(longText, 'Eleanor')) {
 
 On an iPhone 17 it generates faster than it speaks on the GPU through MLX
 (opt-in, iOS 17+), and about 1.8 times slower than it speaks on the CPU. On
-Android phones it runs on the CPU: the opt-in ggml engine runs on the GPU in the
-emulator, but the phone GPUs tested failed. It needs 2 to 2.7 GB of memory, so
-target phones with 8 GB.
+Android the opt-in ggml engine runs it on the GPU of phones with an Adreno 7xx or
+newer (Snapdragon 8 Gen 2 and later): 2.3 times slower than it speaks on a Galaxy
+S24 Ultra, against 2.7 on the CPU. Other Android phones run it on the CPU. It
+needs 2 to 2.7 GB of memory, so target phones with 8 GB.
 [On-device guide →](docs/guides/kitten-tts-2-on-device.md)
 
 **Through the hosted [Kitten API](https://docs.kittenml.com/)**, with voice

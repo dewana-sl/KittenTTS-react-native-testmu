@@ -10,10 +10,11 @@ It is a large model for a phone: a 1.25 to 2 GB download, and 2 to 2.7 GB of
 memory while it is loaded. On an iPhone 17 it generates speech faster than it
 plays when it runs on the GPU through [MLX](#ios-mlx), and about 1.8 times
 slower than it plays on the CPU, which is what apps without a native engine
-use. On Android phones it runs on the CPU for now, 2.7 to 5.4 times slower than
-it plays on the phones tested: the [ggml engine](#android-ggml) runs on the GPU in
-the emulator, but the phone GPUs tested failed. Play long text with
-`generateStreaming()`. For
+use. On Android phones with a Snapdragon 8 Gen 2 or newer (an Adreno 7xx GPU)
+the [ggml engine](#android-ggml) runs it on the GPU, 2.3 times slower than it
+plays on a Galaxy S24 Ultra, against 2.7 on the CPU; other Android phones run it
+on the CPU, 2.7 to 5.4 times slower than it plays on the phones tested. Play long
+text with `generateStreaming()`. For
 voice cloning, or when the download is too big, use
 [Kitten TTS 2 through the Kitten API](kitten-api.md) instead.
 
@@ -203,9 +204,10 @@ Podfile's `platform :ios` to 17.0 and run `KITTENTTS_MLX=1 pod install`.
 ### Android: ggml
 
 Android has no MLX. Kitten TTS 2 runs on the GPU through
-[ggml](https://github.com/ggml-org/ggml)'s Vulkan backend, with both models
-written for it in C++ (`android/src/main/cpp/kittentts2`) from the same weights
-files as MLX, so the download is the same 1.25 GB:
+[ggml](https://github.com/ggml-org/ggml): its OpenCL backend, which Qualcomm
+wrote for Adreno GPUs, on Adreno 7xx and newer, and its Vulkan backend elsewhere.
+Both models are written for it in C++ (`android/src/main/cpp/kittentts2`) from
+the same weights files as MLX, so the download is the same 1.25 GB:
 
 - The language model: the ternary weights unpacked into ggml's 4-bit Q4_0 format
   without rounding, float32 activations, and the token loop and the sampler in
@@ -215,7 +217,7 @@ files as MLX, so the download is the same 1.25 GB:
   decoder with the same noise, the mel is within 0.014 and the waveform within
   0.002.
 
-It adds about 25 MB of native code per ABI and needs Vulkan's shaders compiled at
+It adds about 28 MB of native code per ABI and needs Vulkan's shaders compiled at
 build time, so it is opt-in. With Expo, turn it on in the config plugin and rebuild:
 
 ```json
@@ -227,9 +229,17 @@ build time, so it is opt-in. With Expo, turn it on in the config plugin and rebu
 ```
 
 In a bare React Native app, add `kittentts.ggml=true` to `android/gradle.properties`.
-The first build downloads ggml (37 MB) and the Vulkan headers from GitHub, and
-takes a few minutes longer. It needs a C++ compiler for your own machine, for the
-step that generates the shaders.
+The first build downloads ggml (37 MB) and the Vulkan and OpenCL headers from
+GitHub, and takes a few minutes longer. It needs a C++ compiler for your own
+machine, for the step that generates the shaders, and Python 3, which embeds the
+OpenCL kernels.
+
+The engine opens the phone's own OpenCL library when it has one, so phones
+without it still load the engine and use Vulkan or the CPU. The SDK's manifest
+asks Android for the library (`<uses-native-library android:name="libOpenCL.so"
+android:required="false" />`), which Android 12 and later require before an app
+can open it. The first start compiles the OpenCL kernels, and later starts read
+them from the app's cache folder.
 
 It runs on Android 9 or later, on arm64 phones from about 2018 on (the CPU needs
 dot-product and fp16 instructions) and on x86_64 emulators. 32-bit builds of the
@@ -237,28 +247,49 @@ app leave it out.
 
 The Android emulator's GPU runs it well, and is a good place to develop, but its
 speed says little about phones: it is your computer's GPU behind a translation
-layer. On real phones (on TestMu, in November 2026) none of the GPUs could run it
-properly:
+layer. On real phones (on TestMu, in November 2026), on the same 8 sentences:
 
-| Phone | GPU | What happened on the GPU |
-| --- | --- | --- |
-| Galaxy S24, Galaxy S24 Ultra | Adreno 750 | ggml-vulkan lost the device (`ErrorDeviceLost`) at the first generation |
-| Pixel 8 | Mali-G715 | Noise instead of speech, at a real-time factor of 17 to 18: about 3 times slower than ONNX Runtime on its CPU |
-| A phone on Android 12 | Adreno 620 | Vulkan 1.1, and ggml-vulkan needs 1.2 |
+| Phone | GPU | On the GPU | Real-time factor |
+| --- | --- | --- | --- |
+| Galaxy S24 Ultra (Snapdragon 8 Gen 3) | Adreno 750 | OpenCL: right | 2.31, the decoder 0.76 (ONNX Runtime: 2.68 and 1.11) |
+| Galaxy S24 (Snapdragon 8 Gen 3) | Adreno 750 | OpenCL: right | 2.53, from 2.22 on the first sentence to 3.08 on the eighth as it warmed |
+| Galaxy S24 (Exynos 2400) | Xclipse 940 | Vulkan: right | 8.27: the decoder is fast (0.52), the language model slow |
+| Pixel 8 | Mali-G715 | Vulkan: right | 18 (one sentence): about 3 times slower than ONNX Runtime on its CPU (5.42) |
+| Galaxy S24, OnePlus 11 | Adreno 750, Adreno 740 | Vulkan | Lost the device (`ErrorDeviceLost`) on the 750, made no progress on the 740 |
+| Phones on Android 12 | Adreno 6xx | | Vulkan 1.1, and ggml-vulkan needs 1.2 |
 
-On the Adreno 750, ggml-vulkan's settings did not help. Submitting one op at a
-time (`GGML_VK_MAX_NODES_PER_SUBMIT=1`) kept the device, but the audio was wrong
-and 6 to 7 times slower than on the CPU. Turning off float16 maths, cooperative
-matrices or integer dot products, or preferring host memory, still lost the
-device, and turning off op fusion and graph optimisation ended the app. The Mali
-was too slow to be worth fixing. So the engine leaves Adreno and Mali GPUs, which
-are in most Android phones, alone: there
-`tts.device` is `'cpu'`, `'auto'` uses ONNX Runtime, and `backend: 'ggml'` runs on
-the CPU. Other GPUs, such as Samsung's Xclipse, have not been tried, and the engine
-still uses them. To try an Adreno or Mali GPU anyway, set `KITTENTTS2_DEVICE=gpu`
-in the app's environment before the first `create()`, for example with
+So by default the engine uses the GPU only where it is faster than the CPU:
+OpenCL on Adreno 7xx and newer, and Vulkan on GPUs that have not been measured.
+Only the Adreno 750 was measured through OpenCL; ggml lists the 7xx and 8xx as
+supported.
+On Adreno 6xx, Mali and Xclipse GPUs `tts.device` is `'cpu'`, `'auto'` uses ONNX
+Runtime and `backend: 'ggml'` runs on the CPU. Older Adreno GPUs never use OpenCL:
+ggml's OpenCL backend ends the app when a kernel does not compile, which its
+authors expect of the older phone drivers.
+
+What it took to get each GPU right, found by checking every GPU op against the
+CPU on the phone (`KITTENTTS2_CHECK`, below):
+
+- **Adreno, OpenCL:** its kernels hold matrix products in float16. The language
+  model's last layer reaches about two million, so its output projection and down
+  projection are scaled down by a power of two around the product. On Adreno 7xx
+  it runs flash attention only when the cache has the queries' type, so the cache
+  is float32 there (up to 0.36 GB). It has no sine, which the vocoder needs in
+  every block, so the vocoder runs on the CPU, and its `im2col` is slow, so the
+  flow's convolutions use its direct convolution.
+- **Mali, Vulkan:** ggml-vulkan's matrix products are wrong on a Mali-G715 when the
+  matrix has 32 rows or fewer, in every type. The decoder no longer has any.
+- **Xclipse, Vulkan:** right as it was; the language model's matrix-vector
+  products are what make it slow.
+
+To try a GPU the engine leaves alone, set `KITTENTTS2_DEVICE=gpu` in the app's
+environment before the first `create()`, for example with
 `android.system.Os.setenv("KITTENTTS2_DEVICE", "gpu", true)` at the start of
-`MainActivity.onCreate`.
+`MainActivity.onCreate`; `KITTENTTS2_GPU_BACKEND=Vulkan` (or `OpenCL`) picks the
+backend. `KITTENTTS2_CHECK=<file>` runs every graph one op at a time, checks each
+GPU op against the CPU on the same inputs, and writes what differs, the op a GPU
+failed in and the time per op to the file: slow, for one short sentence when a
+new GPU gives wrong audio.
 
 ## Speed, Precision And Memory
 
@@ -339,17 +370,22 @@ sentences:
 | iPhone 13, iOS 17 | `'mlx'` | 0.92 | 13.3 s |
 | iPhone 15, iOS 17 | `'mlx'` | 0.92 | 13.1 s |
 | iPhone 16, iOS 18 | `'mlx'` | 0.86 | 11.7 s |
-| Galaxy S24 Ultra, Android 14 | `'auto'`: ONNX Runtime, `'int8'` | 2.68 | 14.1 s |
+| Galaxy S24 Ultra, Android 14 | `'auto'`: ggml on the GPU, OpenCL | 2.31 | 21.1 s |
+| Galaxy S24 (Snapdragon), Android 14 | `'auto'`: ggml on the GPU, OpenCL | 2.53 | 21.4 s |
+| Galaxy S24 Ultra, Android 14 | `'onnx'`, `'int8'` | 2.68 | 14.1 s |
 | Pixel 8, Android 14 | `'auto'`: ONNX Runtime, `'int8'` | 5.42 | 17.0 s |
 | Galaxy S21, Android 12 | `'ggml'`, on the CPU | 5.73 | 20.2 s |
 | Galaxy S22 Ultra, Android 12 | `'ggml'`, on the CPU | 5.70 | 19.6 s |
+| OnePlus 11, Android 14 | `'ggml'`, on the CPU | 4.57 | 18.6 s |
 
 On the first sentence, ggml on the CPU took 3.67 on the Galaxy S24 Ultra and
 6.92 on the Pixel 8, against 2.68 and 5.22 with ONNX Runtime, which is why
-`'auto'` uses ONNX Runtime when ggml has no GPU. Loading is after the download,
-warm-up included. Streaming a 29-second text delivered its first 18 seconds of
-audio after 14 to 17 s on the iPhones, 47 s on the Galaxy S24 Ultra and 105 s on
-the Pixel 8.
+`'auto'` uses ONNX Runtime when ggml has no GPU. On the Galaxy S24 Ultra's GPU
+the decoder takes a third of the time (0.76) and the language model the rest
+(1.55); flash attention over the float32 cache is a large part of each token
+step. Loading is after the download, warm-up included. Streaming a 29-second text
+delivered its first 18 seconds of audio after 14 to 17 s on the iPhones, 41 s on
+the Galaxy S24 Ultra's GPU (47 s with ONNX Runtime) and 105 s on the Pixel 8.
 
 ## The One-Step Decoder
 

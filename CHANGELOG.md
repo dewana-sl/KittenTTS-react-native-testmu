@@ -38,10 +38,17 @@
   `backend: 'auto'` uses it when it finds a GPU it can use, and otherwise ONNX
   Runtime. `tts.device` says `'gpu'` or `'cpu'`. In the Android emulator on an M5
   Pro Mac it generates faster than it speaks (a real-time factor of about 0.8,
-  against about 4 on the CPU). On real phones the GPUs failed: ggml-vulkan lost
-  the device on an Adreno 750 and gave noise on a Mali-G715, slower than the CPU.
-  So the engine leaves Adreno and Mali GPUs alone, `'auto'` uses ONNX Runtime
-  there and `backend: 'ggml'` the CPU; `KITTENTTS2_DEVICE=gpu` tries them anyway.
+  against about 4 on the CPU). On phones with an Adreno 7xx or newer it runs on
+  ggml's OpenCL backend, which Qualcomm wrote for Adreno: a real-time factor of
+  2.31 on a Galaxy S24 Ultra against 2.68 with ONNX Runtime, the decoder 0.76
+  against 1.11. The engine opens the phone's `libOpenCL.so` only when it has one,
+  and the SDK's manifest asks Android for it (`uses-native-library`). Building
+  it now also needs Python 3. ggml-vulkan lost the device on Adreno GPUs, and was
+  right but slower than the CPU on a Mali-G715 (once the decoder stopped using its
+  small-tile matrix products, which are wrong there) and a Samsung Xclipse 940
+  (whose decoder was fast, at 0.52), so `'auto'` uses ONNX Runtime on those and
+  on older Adrenos, and `backend: 'ggml'` the CPU; `KITTENTTS2_DEVICE=gpu` tries
+  them anyway. `KITTENTTS2_CHECK=<file>` checks a GPU against the CPU op by op.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,

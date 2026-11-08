@@ -73,19 +73,24 @@ Main flow:
   that, and recheck it on an iOS 17 device when mlx-swift is upgraded.
 - `android/src/main/cpp/kittentts2/` and `KittenTTS2GGMLModule.java`: the opt-in
   ggml backend, the same two models and calls as the MLX one, on the GPU through
-  Vulkan. `language_model.cpp` and `audio_decoder.cpp` build ggml graphs by hand
+  ggml-opencl on Adreno 7xx and newer and ggml-vulkan elsewhere. `language_model.cpp` and `audio_decoder.cpp` build ggml graphs by hand
   (ports of the Swift files), reading the same weights files; `sampler.cpp` ports
   `sampling.ts`, `engine.cpp` holds the models and the token loop, `jni.cpp` is the
   bridge. Built only with `kittentts.ggml=true` in `android/gradle.properties` (the
   Expo plugin's `ggml` option): `android/build.gradle` then starts CMake in
   `android/CMakeLists.txt`, which holds ONNX Runtime's JSI library and the engine.
-  `android/src/main/cpp/CMakeLists.txt` pins ggml and the Vulkan headers. Vulkan
-  has traps that only show on a GPU and in multi-row graphs: read "What a GPU needs
-  from the graphs" in `tools/kitten-tts-2-ggml/README.md` before changing a graph,
-  and recheck with `kt2check` (same folder) on a device or emulator.
-  `knownGpuProblem()` in `runtime.cpp` keeps the engine off Adreno and Mali GPUs,
-  which failed on real phones (see the on-device guide); `KITTENTTS2_DEVICE=gpu`
-  uses them anyway, for testing.
+  `android/src/main/cpp/CMakeLists.txt` pins ggml and the Vulkan and OpenCL
+  headers. `opencl_loader.cpp` (written by `opencl_loader.py`) forwards ggml's
+  OpenCL calls to the phone's `libOpenCL.so`, opened only when present, so the
+  engine loads on phones without it: regenerate it when a newer ggml calls more
+  of OpenCL (linking fails, naming the function). Both backends have traps that
+  only show on a GPU: read "What a GPU needs from the graphs" in
+  `tools/kitten-tts-2-ggml/README.md` before changing a graph, and recheck on a
+  phone with `KITTENTTS2_CHECK` (the TestMu benchmark sweep) or with `kt2check`.
+  `knownGpuProblem()` in `runtime.cpp` decides which GPUs the engine uses by
+  default (Adreno 7xx+ through OpenCL; not Vulkan on Adreno, Mali or Xclipse,
+  which were slower than the CPU or failed on real phones; see the on-device
+  guide); `KITTENTTS2_DEVICE=gpu` uses them anyway, for testing.
 - `tools/kitten-tts-2-onnx/`: the Python exporter for those files (`export.py`)
   and a parity check against the Python package (`check.py`). Not shipped in the
   npm package.
