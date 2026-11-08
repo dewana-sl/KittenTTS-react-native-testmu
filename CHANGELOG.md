@@ -19,7 +19,11 @@
   the Expo plugin, or `KITTENTTS_MLX=1 pod install`); `backend: 'auto'` uses it
   when it is built in. An iPhone 17 then generates faster than it speaks (a
   real-time factor of 0.55 to 0.79, against 1.8 on the CPU) and downloads
-  1.25 GB instead of 2.02 GB.
+  1.25 GB instead of 2.02 GB. On iOS 17 the SDK works around an mlx-swift bug
+  that kept MLX's matrix kernels from building
+  ([mlx-swift#497](https://github.com/ml-explore/mlx-swift/issues/497)); an
+  iPhone 13 and an iPhone 15 on iOS 17 ran at 0.92. Errors in the native engines
+  come back as `INFERENCE_FAILED`, naming the engine, instead of ending the app.
 - Added `decoder: 'student_w4'` for Kitten TTS 2 on MLX: the Python package's
   distilled one-step decoder, 175 MB less to download and about 0.3 GiB less peak
   memory on an iPhone 17, with lower voice similarity (0.684 against 0.752). The
@@ -34,7 +38,10 @@
   `backend: 'auto'` uses it when it finds a GPU it can use, and otherwise ONNX
   Runtime. `tts.device` says `'gpu'` or `'cpu'`. In the Android emulator on an M5
   Pro Mac it generates faster than it speaks (a real-time factor of about 0.8,
-  against about 4 on the CPU); it has not been measured on a phone yet.
+  against about 4 on the CPU). On real phones the GPUs failed: ggml-vulkan lost
+  the device on an Adreno 750 and gave noise on a Mali-G715, slower than the CPU.
+  So the engine leaves Adreno and Mali GPUs alone, `'auto'` uses ONNX Runtime
+  there and `backend: 'ggml'` the CPU; `KITTENTTS2_DEVICE=gpu` tries them anyway.
 - Added Kitten TTS 2 through the Kitten API:
   `KittenTTS.create({ model: 'kitten-tts-2', apiKey })` returns a `KittenTTS2`
   with the same `generate()`, `generateStreaming()`, `speak()` and `play()`,
