@@ -126,6 +126,7 @@ endif()
 add_library(kittentts2_engine STATIC
     kittentts2/audio_decoder.cpp
     kittentts2/engine.cpp
+    kittentts2/gpu_check.cpp
     kittentts2/json.cpp
     kittentts2/language_model.cpp
     kittentts2/runtime.cpp

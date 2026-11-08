@@ -53,6 +53,9 @@ kt2check lm-compare reference.json lm-ternary.safetensors
 Adreno or Mali GPU, which the engine otherwise leaves alone (`knownGpuProblem()` in
 `runtime.cpp`), and `KITTENTTS2_DEBUG=1` lists the nodes that fall back to the CPU,
 with the graph's splits and buffer sizes.
+`KITTENTTS2_CHECK=<file>` runs every graph one node at a time and checks each GPU
+node against the CPU on the same inputs, for a GPU that gives wrong results or
+fails (`kittentts2/gpu_check.h`); it works in an app too.
 
 ## What a GPU needs from the graphs
 
