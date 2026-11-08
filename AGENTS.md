@@ -68,6 +68,9 @@ Main flow:
   needs iOS 17 and pulls in mlx-swift through React Native's `spm_dependency`.
   MLX does not run in the iOS simulator: test it on a device. Building it needs
   Xcode's Metal Toolchain (`xcodebuild -downloadComponent MetalToolchain`).
+  `KittenTTS2MetalCompat.m` works around mlx-swift#497 on iOS 17 only (MLX's
+  matrix kernels use a Metal name iOS 17 lacks): remove it once mlx-swift fixes
+  that, and recheck it on an iOS 17 device when mlx-swift is upgraded.
 - `android/src/main/cpp/kittentts2/` and `KittenTTS2GGMLModule.java`: the opt-in
   ggml backend, the same two models and calls as the MLX one, on the GPU through
   Vulkan. `language_model.cpp` and `audio_decoder.cpp` build ggml graphs by hand
@@ -80,6 +83,9 @@ Main flow:
   has traps that only show on a GPU and in multi-row graphs: read "What a GPU needs
   from the graphs" in `tools/kitten-tts-2-ggml/README.md` before changing a graph,
   and recheck with `kt2check` (same folder) on a device or emulator.
+  `knownGpuProblem()` in `runtime.cpp` keeps the engine off Adreno and Mali GPUs,
+  which failed on real phones (see the on-device guide); `KITTENTTS2_DEVICE=gpu`
+  uses them anyway, for testing.
 - `tools/kitten-tts-2-onnx/`: the Python exporter for those files (`export.py`)
   and a parity check against the Python package (`check.py`). Not shipped in the
   npm package.

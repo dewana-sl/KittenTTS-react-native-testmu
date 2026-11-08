@@ -10,8 +10,10 @@ It is a large model for a phone: a 1.25 to 2 GB download, and 2 to 2.7 GB of
 memory while it is loaded. On an iPhone 17 it generates speech faster than it
 plays when it runs on the GPU through [MLX](#ios-mlx), and about 1.8 times
 slower than it plays on the CPU, which is what apps without a native engine
-use. On Android it can run on the GPU through [ggml and Vulkan](#android-ggml),
-tested so far in the emulator. Play long text with `generateStreaming()`. For
+use. On Android phones it runs on the CPU for now, 2.7 to 5.4 times slower than
+it plays on the phones tested: the [ggml engine](#android-ggml) runs on the GPU in
+the emulator, but the phone GPUs tested failed. Play long text with
+`generateStreaming()`. For
 voice cloning, or when the download is too big, use
 [Kitten TTS 2 through the Kitten API](kitten-api.md) instead.
 
@@ -177,7 +179,11 @@ Kitten TTS 2 runs on the GPU through
   0.026 and the waveform within 0.004.
 
 MLX needs iOS 17 or later and a real device; the iOS simulator lacks the GPU
-features it uses.
+features it uses. On iOS 17 the SDK works around
+[an mlx-swift bug](https://github.com/ml-explore/mlx-swift/issues/497): MLX
+builds its matrix kernels on the device with a Metal name that iOS 17 lacks, so
+the SDK swaps it for a stand-in as they are built (`ios/KittenTTS2MetalCompat.m`).
+iOS 18 and later are left alone.
 
 It raises the app's minimum iOS version, so it is opt-in. With Expo, turn it on
 in the config plugin and rebuild:
@@ -227,13 +233,32 @@ step that generates the shaders.
 
 It runs on Android 9 or later, on arm64 phones from about 2018 on (the CPU needs
 dot-product and fp16 instructions) and on x86_64 emulators. 32-bit builds of the
-app leave it out. On a phone it cannot use, or whose GPU ggml rejects, `'auto'`
-falls back to ONNX Runtime, and `backend: 'ggml'` runs on the CPU if the phone
-has no usable GPU; it was no faster than ONNX Runtime there.
+app leave it out.
 
-The Android emulator's GPU works, and is a good place to develop, but its speed
-says little about phones: it is your computer's GPU behind a translation layer.
-It has not yet been measured on a phone.
+The Android emulator's GPU runs it well, and is a good place to develop, but its
+speed says little about phones: it is your computer's GPU behind a translation
+layer. On real phones (on TestMu, in November 2026) none of the GPUs could run it
+properly:
+
+| Phone | GPU | What happened on the GPU |
+| --- | --- | --- |
+| Galaxy S24, Galaxy S24 Ultra | Adreno 750 | ggml-vulkan lost the device (`ErrorDeviceLost`) at the first generation |
+| Pixel 8 | Mali-G715 | Noise instead of speech, at a real-time factor of 17 to 18: about 3 times slower than ONNX Runtime on its CPU |
+| A phone on Android 12 | Adreno 620 | Vulkan 1.1, and ggml-vulkan needs 1.2 |
+
+On the Adreno 750, ggml-vulkan's settings did not help. Submitting one op at a
+time (`GGML_VK_MAX_NODES_PER_SUBMIT=1`) kept the device, but the audio was wrong
+and 6 to 7 times slower than on the CPU. Turning off float16 maths, cooperative
+matrices or integer dot products, or preferring host memory, still lost the
+device, and turning off op fusion and graph optimisation ended the app. The Mali
+was too slow to be worth fixing. So the engine leaves Adreno and Mali GPUs, which
+are in most Android phones, alone: there
+`tts.device` is `'cpu'`, `'auto'` uses ONNX Runtime, and `backend: 'ggml'` runs on
+the CPU. Other GPUs, such as Samsung's Xclipse, have not been tried, and the engine
+still uses them. To try an Adreno or Mali GPU anyway, set `KITTENTTS2_DEVICE=gpu`
+in the app's environment before the first `create()`, for example with
+`android.system.Os.setenv("KITTENTTS2_DEVICE", "gpu", true)` at the start of
+`MainActivity.onCreate`.
 
 ## Speed, Precision And Memory
 
@@ -305,6 +330,26 @@ text delivered its first 18 seconds of audio after 11 to 13 s. ggml keeps about 
 weights and caches in GPU memory (0.82 GB for the language model, 0.27 GB for the
 decoder, up to 0.18 GB for the attention cache) plus what a generation is
 working on.
+
+On real phones on TestMu (November 2026), in a Release build, on the same 8
+sentences:
+
+| Phone | Engine | Real-time factor | Loading |
+| --- | --- | --- | --- |
+| iPhone 13, iOS 17 | `'mlx'` | 0.92 | 13.3 s |
+| iPhone 15, iOS 17 | `'mlx'` | 0.92 | 13.1 s |
+| iPhone 16, iOS 18 | `'mlx'` | 0.86 | 11.7 s |
+| Galaxy S24 Ultra, Android 14 | `'auto'`: ONNX Runtime, `'int8'` | 2.68 | 14.1 s |
+| Pixel 8, Android 14 | `'auto'`: ONNX Runtime, `'int8'` | 5.42 | 17.0 s |
+| Galaxy S21, Android 12 | `'ggml'`, on the CPU | 5.73 | 20.2 s |
+| Galaxy S22 Ultra, Android 12 | `'ggml'`, on the CPU | 5.70 | 19.6 s |
+
+On the first sentence, ggml on the CPU took 3.67 on the Galaxy S24 Ultra and
+6.92 on the Pixel 8, against 2.68 and 5.22 with ONNX Runtime, which is why
+`'auto'` uses ONNX Runtime when ggml has no GPU. Loading is after the download,
+warm-up included. Streaming a 29-second text delivered its first 18 seconds of
+audio after 14 to 17 s on the iPhones, 47 s on the Galaxy S24 Ultra and 105 s on
+the Pixel 8.
 
 ## The One-Step Decoder
 
