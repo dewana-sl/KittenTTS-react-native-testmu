@@ -43,8 +43,10 @@ public:
     const std::string & device() const { return device_; }
     /** Where weights and caches live: the GPU's memory, or the CPU's. */
     ggml_backend_buffer_type_t weightBuffer() const;
-    /** A scheduler over the GPU (when there is one) and the CPU. The caller frees it. */
-    ggml_backend_sched_t newScheduler(size_t graphSize) const;
+    /** A scheduler over the GPU (when there is one, and not `cpuOnly`) and the CPU. The caller frees it. */
+    ggml_backend_sched_t newScheduler(size_t graphSize, bool cpuOnly = false) const;
+    /** Whether the GPU runs ggml_sin, which the vocoder needs in every block; ggml-opencl does not. */
+    bool gpuRunsSine() const;
     /** Throws, naming the op, when neither backend can run a node (ggml would abort). */
     void checkSupported(ggml_cgraph * graph) const;
 

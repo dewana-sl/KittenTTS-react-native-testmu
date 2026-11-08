@@ -171,14 +171,23 @@ ggml_backend_buffer_type_t Runtime::weightBuffer() const {
     return ggml_backend_get_default_buffer_type(gpu_ ? gpu_ : cpu_);
 }
 
-ggml_backend_sched_t Runtime::newScheduler(size_t graphSize) const {
+ggml_backend_sched_t Runtime::newScheduler(size_t graphSize, bool cpuOnly) const {
     std::vector<ggml_backend_t> backends;
-    if (gpu_) backends.push_back(gpu_);
+    if (gpu_ && !cpuOnly) backends.push_back(gpu_);
     backends.push_back(cpu_);
     ggml_backend_sched_t sched = ggml_backend_sched_new(
         backends.data(), nullptr, static_cast<int>(backends.size()), graphSize, false, false);
     if (!sched) throw std::runtime_error("Could not create a ggml scheduler");
     return sched;
+}
+
+bool Runtime::gpuRunsSine() const {
+    if (!gpu_) return false;
+    ggml_init_params params{ggml_tensor_overhead() * 2, nullptr, true};
+    ggml_context * ctx = ggml_init(params);
+    const bool runs = ggml_backend_supports_op(gpu_, ggml_sin(ctx, ggml_new_tensor_1d(ctx, GGML_TYPE_F32, 256)));
+    ggml_free(ctx);
+    return runs;
 }
 
 void Runtime::checkSupported(ggml_cgraph * graph) const {

@@ -64,6 +64,12 @@ private:
     const Runtime & runtime_;
     ggml_context * weightsCtx_ = nullptr;
     ggml_backend_buffer_t weights_ = nullptr;
+    // The vocoder's weights (mel2wav.*, the STFT bases): in the CPU's memory when
+    // the vocoder runs there, which it does when the GPU lacks ggml_sin: its snake
+    // activations would send every block to the CPU and back.
+    bool vocoderOnCpu_ = false;
+    ggml_context * vocoderCtx_ = nullptr;
+    ggml_backend_buffer_t vocoderWeights_ = nullptr;
     std::map<std::string, ggml_tensor *> tensors_;
     std::map<int64_t, ggml_tensor *> means_;
     std::vector<float> sourceWeight_;   // m_source.l_linear, [9]
