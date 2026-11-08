@@ -108,6 +108,10 @@ const char * knownGpuProblem(ggml_backend_dev_t dev) {
     });
     if (vendor == 0x5143) return "on Qualcomm Adreno GPUs ggml-vulkan loses the device (Adreno 750)";
     if (vendor == 0x13B5) return "on Arm Mali GPUs ggml-vulkan is about 3x slower than the CPU (Mali-G715)";
+    // Its results are right and its decoder fast (twice ONNX Runtime's speed on a
+    // Snapdragon's CPU), but the language model's matrix-vector products are slow:
+    // a real-time factor of 8.3 in all, against 2.7 for ONNX Runtime.
+    if (std::strstr(name, "Xclipse")) return "on Samsung Xclipse GPUs ggml-vulkan's language model is several times slower than the CPU (Xclipse 940)";
 #else
     (void)name;
 #endif
