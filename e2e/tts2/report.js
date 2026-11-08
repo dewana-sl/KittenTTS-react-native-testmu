@@ -30,10 +30,35 @@ for (const r of reports) {
   const cancel = cell(r, 'cancel', x => (x.cancelled ? `${x.afterMs} ms` : 'not cancelled'));
   lines.push(`| ${r.deviceName} | ${r.platformName} ${r.platformVersion} | ${status} | ${r.backend || '–'} ${r.device || ''} | ${load?.ok ? `${load.detail.downloadMB} MB, ${fmt(load.detail.downloadSeconds, 0)} s` : '–'} | ${load?.ok ? `${fmt(load.detail.loadSeconds, 1)} s` : '–'} | ${whole} | ${decoder} | ${stream} | ${cancel} |`);
 }
+// Metal's compile errors run to pages of warnings: keep the first line and the first error.
+const short = text => {
+  const lines = String(text).split('\n');
+  const error = lines.slice(1).find(line => /error:/.test(line));
+  const kept = [lines[0], ...(error ? [error.trim()] : [])].join(' … ');
+  return kept.length > 400 ? `${kept.slice(0, 400)}…` : kept;
+};
 const problems = reports.flatMap(r => [
-  ...(r.error ? [`- **${r.deviceName}**: ${r.error}`] : []),
-  ...(r.steps || []).filter(s => !s.ok).map(s => `- **${r.deviceName}**, ${s.name}: ${s.error}`),
+  ...(r.error ? [`- **${r.deviceName}**: ${short(r.error)}`] : []),
+  ...(r.steps || []).filter(s => !s.ok).map(s => `- **${r.deviceName}**, ${s.name}: ${short(s.error)}`),
 ]);
 if (problems.length) lines.push('', '## What does not work', '', ...problems);
+
+const gpus = reports.filter(r => r.gpu);
+if (gpus.length) lines.push('', '## Where ggml runs', '', ...gpus.map(r => `- **${r.deviceName}** (${r.model || '?'}): ${r.gpu}`));
+
+// The short GPU checks: one app start per set of ggml-vulkan settings.
+const swept = reports.filter(r => r.sweep?.length);
+if (swept.length) {
+  lines.push('', '## GPU settings tried', '', '| Device | Settings | Runs on | RTF | Decoder RTF | Audio (rms, zero crossings) | Error |', '| --- | --- | --- | ---: | ---: | --- | --- |');
+  for (const r of swept) {
+    for (const e of r.sweep) {
+      const one = (e.steps || []).find(s => s.name === 'one sentence');
+      const failedStep = (e.steps || []).find(s => !s.ok);
+      const audio = one?.ok ? `${one.detail.audioOk ? 'ok' : 'bad'} (${one.detail.rms[0]}, ${one.detail.zcr?.[0] ?? '–'})` : '–';
+      const error = e.error || failedStep?.error || '';
+      lines.push(`| ${r.deviceName} | ${e.env || 'none'} | ${e.device || '–'} | ${one?.ok ? fmt(one.detail.rtf) : '–'} | ${one?.ok ? fmt(one.detail.decoderRtf, 3) : '–'} | ${audio} | ${short(error).replace(/\|/g, '/').replace(/\n/g, ' ')} |`);
+    }
+  }
+}
 lines.push('', 'RTF is seconds of generating per second of speech. "Whole" is the 8 sentences end to end; "Decoder" is the audio decoder alone on the same 19 s of codec tokens (median of 4 rounds, decoders taking turns).');
 process.stdout.write(`${lines.join('\n')}\n`);

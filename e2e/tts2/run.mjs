@@ -90,7 +90,8 @@ async function deviceLog(withApp) {
     const types = await driver.getLogTypes();
     const lines = [];
     for (const type of types.filter(t => ['crashlog', 'syslog', 'logcat'].includes(t))) {
-      const messages = (await driver.getLogs(type)).map(entry => String(entry.message));
+      // Appium logs each report it reads, and the report names the engines: leave its lines out.
+      const messages = (await driver.getLogs(type)).map(entry => String(entry.message)).filter(m => !/\bappium\b/i.test(m));
       const relevant = messages.filter(m => ENGINE_LINES.test(m) || (withApp && APP_LINES.test(m)));
       // The crash message itself first: later lines would push it out of the tail.
       const crash = messages.filter(m => CRASH_LINES.test(m)).slice(0, 30);
@@ -102,47 +103,100 @@ async function deviceLog(withApp) {
   }
 }
 
-const deadline = Date.now() + TIMEOUT_MS;
-let last = null;
-let stopped = '';
-try {
-  // The app waits for the address of the model files.
-  const input = await driver.$('~tts2-base');
-  await input.waitForExist({ timeout: 120000 });
-  await input.setValue(base);
-  await driver.hideKeyboard().catch(() => {});
-  await (await driver.$('~tts2-start')).click();
-  while (Date.now() < deadline) {
-    const text = await reportText(driver);
-    if (text) {
-      try {
-        last = JSON.parse(text);
-        save(last);
-        console.log(`${new Date().toISOString()} ${last.status} (${(last.steps || []).length} steps)`);
-      } catch {
-        // A report caught mid-update; read it again next time.
+const SWEEP = JSON.parse(process.env.TTS2_SWEEP || 'null') || [];
+const FULL = process.env.TTS2_FULL !== 'false';
+const SWEEP_TIMEOUT_MS = 6 * 60 * 1000;
+
+/** Types the address into the app, taps Start and reads its report until it is done or stops. */
+async function runApp(address, timeoutMs, onReport = () => {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  let stopped = '';
+  try {
+    // The app waits for the address of the model files.
+    const input = await driver.$('~tts2-base');
+    await input.waitForExist({ timeout: 120000 });
+    await input.setValue(address);
+    await driver.hideKeyboard().catch(() => {});
+    await (await driver.$('~tts2-start')).click();
+    while (Date.now() < deadline) {
+      const text = await reportText(driver);
+      if (text) {
+        try {
+          last = JSON.parse(text);
+          onReport(last);
+          console.log(`${new Date().toISOString()} ${last.status} (${(last.steps || []).length} steps)`);
+        } catch {
+          // A report caught mid-update; read it again next time.
+        }
       }
+      if (last?.done) break;
+      const state = await driver.queryAppState(BUNDLE_ID).catch(() => -1);
+      if (state === 1) {
+        stopped = 'The app stopped running (crashed, or the system ended it for memory).';
+        break;
+      }
+      await driver.pause(15000);
     }
-    if (last?.done) break;
-    const state = await driver.queryAppState(BUNDLE_ID).catch(() => -1);
-    if (state === 1) {
-      stopped = 'The app stopped running (crashed, or the system ended it for memory).';
-      break;
-    }
-    await driver.pause(15000);
+  } catch (error) {
+    stopped = `The session failed: ${error?.message ?? error}`;
   }
-} catch (error) {
-  stopped = `The session failed: ${error?.message ?? error}`;
+  if (!last?.done && !stopped) stopped = `No complete report within ${Math.round(timeoutMs / 60000)} minutes.`;
+  return { last, stopped };
 }
-if (!last?.done) {
-  const reason = stopped || `No complete report within ${Math.round(TIMEOUT_MS / 60000)} minutes.`;
-  const log = await deviceLog(true);
-  save({ ...(last || {}), done: false, error: `${reason} Last status: ${last?.status ?? 'none'}`, deviceLog: log });
-  console.error(reason);
-  console.error(JSON.stringify(log, null, 2));
-  await driver.deleteSession().catch(() => {});
-  process.exit(1);
+
+/** Starts the app again in a new process, with `env` ("NAME=value;...") in its environment (scripts/gpu-env.py). */
+async function restartWith(env) {
+  const extras = env ? [['s', 'ggml_env', env]] : [];
+  try {
+    await driver.execute('mobile: startActivity', { intent: `${BUNDLE_ID}/.MainActivity`, stop: true, wait: true, extras });
+  } catch (error) {
+    // Older UiAutomator2 drivers take these names instead.
+    await driver.execute('mobile: startActivity', {
+      appPackage: BUNDLE_ID, appActivity: '.MainActivity', dontStopAppOnReset: false,
+      ...(env ? { optionalIntentArguments: `--es ggml_env "${env}"` } : {}),
+    }).catch(() => { throw error; });
+  }
 }
-save({ ...last, deviceLog: await deviceLog(false) });
+
+let result = {};
+let failed = false;
+if (FULL) {
+  const { last, stopped } = await runApp(base, TIMEOUT_MS, report => save(report));
+  if (last?.done) {
+    result = { ...last, deviceLog: await deviceLog(false) };
+  } else {
+    failed = true;
+    result = { ...(last || {}), done: false, error: `${stopped} Last status: ${last?.status ?? 'none'}`, deviceLog: await deviceLog(true) };
+    console.error(stopped);
+  }
+  save(result);
+}
+
+// Short GPU checks, each in a new app process with different ggml-vulkan settings.
+if (SWEEP.length) {
+  result.sweep = [];
+  for (const env of SWEEP) {
+    console.log(`GPU check with ${env || 'no settings'}`);
+    let entry;
+    try {
+      await restartWith(env);
+      const { last, stopped } = await runApp(`${base}#gpu-check`, SWEEP_TIMEOUT_MS);
+      entry = { env, gpu: last?.gpu, device: last?.device, steps: last?.steps ?? [], done: Boolean(last?.done) };
+      if (!last?.done) Object.assign(entry, { error: `${stopped} Last status: ${last?.status ?? 'none'}`, deviceLog: await deviceLog(true) });
+    } catch (error) {
+      entry = { env, done: false, error: `Could not start the app: ${error?.message ?? error}` };
+    }
+    console.log(JSON.stringify(entry).slice(0, 2000));
+    result.sweep.push(entry);
+    save(result);
+  }
+  if (!FULL) {
+    const first = result.sweep.find(entry => entry.done);
+    result = { ...result, done: Boolean(first), gpu: first?.gpu, device: first?.device, backend: 'ggml' };
+    save(result);
+  }
+}
+
 await driver.deleteSession().catch(() => {});
-process.exit(0);
+process.exit(failed ? 1 : 0);

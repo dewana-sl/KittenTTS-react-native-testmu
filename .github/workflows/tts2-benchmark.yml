@@ -234,6 +234,7 @@ jobs:
         run: |
           CI=1 npx expo prebuild --platform android --no-install
           python3 scripts/allow-http.py .
+          python3 scripts/gpu-env.py .
 
       - name: Build the release APK
         if: steps.cache.outputs.cache-hit != 'true'
@@ -266,7 +267,7 @@ jobs:
     needs: [plan, models, ios-app]
     if: needs.plan.outputs.ios != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       TESTMU_PLATFORM: iOS
       TESTMU_APP_URL: ${{ needs.ios-app.outputs.app_url }}
@@ -317,7 +318,7 @@ jobs:
         run: npm ci
 
       - name: Run the benchmark on the device
-        timeout-minutes: 45
+        timeout-minutes: 55
         continue-on-error: true
         working-directory: e2e/tts2
         env:
@@ -327,6 +328,9 @@ jobs:
           TESTMU_VERSION: ${{ matrix.version }}
           TTS2_BASE_URL: ${{ steps.tunnel.outputs.url }}
           TTS2_REPORT: reports/${{ matrix.slug }}.json
+          # Android: ggml-vulkan settings to try, one app start each, and whether to skip the full run.
+          TTS2_SWEEP: ${{ toJSON(matrix.sweep) }}
+          TTS2_FULL: ${{ matrix.full }}
         run: npm test
 
       - name: Keep a report even when the device never sent one
@@ -361,7 +365,7 @@ jobs:
     needs: [plan, models, android-app, ios]
     if: ${{ !cancelled() && needs.plan.outputs.android != '[]' && needs.models.result == 'success' && needs.android-app.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       TESTMU_PLATFORM: Android
       TESTMU_APP_URL: ${{ needs.android-app.outputs.app_url }}

@@ -46,22 +46,32 @@ const round = (value: number, digits = 2) => Number(value.toFixed(digits));
 const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 const message = (error: any) => `${error?.code ?? ''} ${error?.message ?? error}`.trim();
 
-/** Whether the audio is speech-like rather than silence, noise or NaN. */
+/**
+ * Whether the audio is speech-like rather than silence, noise or NaN. Speech at
+ * 24 kHz crosses zero on well under a quarter of its samples; noise on about half.
+ */
 function audioCheck(samples: Float32Array) {
   let sum = 0;
   let peak = 0;
   let finite = true;
+  let crossings = 0;
   for (let i = 0; i < samples.length; i += 1) {
     const s = samples[i];
     if (!Number.isFinite(s)) finite = false;
     sum += s * s;
     peak = Math.max(peak, Math.abs(s));
+    if (i > 0 && (s >= 0) !== (samples[i - 1] >= 0)) crossings += 1;
   }
   const rms = Math.sqrt(sum / Math.max(1, samples.length));
-  return { rms: round(rms, 4), peak: round(peak, 3), ok: finite && rms > 0.005 && peak < 1.5 };
+  const zcr = crossings / Math.max(1, samples.length - 1);
+  return { rms: round(rms, 4), peak: round(peak, 3), zcr: round(zcr, 3), ok: finite && rms > 0.005 && peak < 1.5 && zcr < 0.25 };
 }
 
-async function run(base: string, publish: (report: object) => void) {
+/**
+ * The whole benchmark, or with `gpuCheck` only a load and one sentence: the
+ * runner restarts the app with different ggml-vulkan settings and runs that.
+ */
+async function run(base: string, publish: (report: object) => void, gpuCheck = false) {
   const constants = Platform.constants as Record<string, unknown>;
   const report = {
     app: 'kitten-tts-2-benchmark',
@@ -70,6 +80,8 @@ async function run(base: string, publish: (report: object) => void) {
     model: String(constants.Model ?? constants.interfaceIdiom ?? ''),
     backend: '' as string,
     device: '' as string,
+    /** What the native engine says it runs on, and why it is not the GPU. */
+    gpu: '' as string,
     status: 'starting',
     done: false,
     steps: [] as Step[],
@@ -117,6 +129,8 @@ async function run(base: string, publish: (report: object) => void) {
     });
     report.backend = tts.backend;
     report.device = tts.device;
+    const ggml = (NativeModules as any).KittenTTS2GGML;
+    if (!IOS && ggml?.device) report.gpu = await ggml.device().catch((error: unknown) => message(error));
     const files = (tts.state.manifest.files as Array<{ path: string; size: number; backend?: string; decoder?: string }>)
       .filter(f => (!f.backend || f.backend === 'native') && (!f.decoder || f.decoder === decoder))
       .filter(f => !downloaded.has(f.path));
@@ -150,13 +164,13 @@ async function run(base: string, publish: (report: object) => void) {
     };
     return decode;
   };
-  const sentences = async (tts: any) => {
+  const sentences = async (tts: any, jobs = JOBS) => {
     let audio = 0;
     let took = 0;
     const each: number[] = [];
     const checks: Array<ReturnType<typeof audioCheck>> = [];
     decodeMs = 0;
-    for (const [text, options] of JOBS) {
+    for (const [text, options] of jobs) {
       const started = Date.now();
       const result = await tts.generate(text, options);
       const seconds = (Date.now() - started) / 1000;
@@ -172,6 +186,7 @@ async function run(base: string, publish: (report: object) => void) {
       each,
       audioOk: checks.every(c => c.ok),
       rms: checks.map(c => c.rms),
+      zcr: checks.map(c => c.zcr),
     };
   };
 
@@ -179,6 +194,23 @@ async function run(base: string, publish: (report: object) => void) {
   const conditioning: Record<string, unknown> = {};
   let decodeRaw: ((...args: any[]) => Promise<Float32Array | null>) | undefined;
   let tts: any;
+
+  if (gpuCheck) {
+    const opened = await step('load default', async () => {
+      const result = await open('default');
+      tts = result.tts;
+      return result.detail;
+    });
+    if (opened) {
+      timeDecoder(tts);
+      await step('one sentence', () => sentences(tts, JOBS.slice(0, 1)));
+    }
+    await tts?.dispose().catch(() => {});
+    report.status = 'done';
+    report.done = true;
+    show(true);
+    return;
+  }
 
   for (const decoder of DECODERS) {
     const opened = await step(`load ${decoder}`, async () => {
@@ -281,8 +313,10 @@ export default function App() {
   const start = () => {
     if (started.current || !base.trim()) return;
     started.current = true;
+    // "<address>#gpu-check" runs only the short GPU check.
+    const [address, mode] = base.trim().split('#');
     activateKeepAwakeAsync().catch(() => {}).finally(() => {
-      run(base.trim().replace(/\/+$/, ''), report => setText(JSON.stringify(report)))
+      run(address.replace(/\/+$/, ''), report => setText(JSON.stringify(report)), mode === 'gpu-check')
         .catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
     });
   };
