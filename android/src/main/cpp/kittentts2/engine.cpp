@@ -1,8 +1,5 @@
 #include "engine.h"
 
-#include <cstdlib>
-#include <cstring>
-
 namespace kt2 {
 
 Engine & Engine::shared() {
@@ -12,9 +9,9 @@ Engine & Engine::shared() {
 
 Runtime & Engine::runtime() {
     if (!runtime_) {
-        // KITTENTTS2_DEVICE=cpu keeps everything off the GPU, for comparisons.
-        const char * device = std::getenv("KITTENTTS2_DEVICE");
-        runtime_ = std::make_unique<Runtime>(!(device && std::strcmp(device, "cpu") == 0), 0);
+        // KITTENTTS2_DEVICE=cpu keeps everything off the GPU, for comparisons; =gpu
+        // uses a GPU the SDK leaves alone by default (see knownGpuProblem).
+        runtime_ = std::make_unique<Runtime>(gpuChoiceFromEnvironment(), 0);
     }
     return *runtime_;
 }

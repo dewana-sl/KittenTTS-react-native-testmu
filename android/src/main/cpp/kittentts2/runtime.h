@@ -13,10 +13,19 @@
 
 namespace kt2 {
 
+/**
+ * Whether to use the GPU: never; when there is one that is not known to fail
+ * (the default); or whenever there is one, for testing a GPU that is.
+ */
+enum class GpuChoice { Off, Auto, Always };
+
+/** From KITTENTTS2_DEVICE: "cpu" is Off, "gpu" is Always, unset or anything else Auto. */
+GpuChoice gpuChoiceFromEnvironment();
+
 class Runtime {
 public:
-    /** `useGpu` false keeps everything on the CPU; `threads` 0 picks a count. */
-    Runtime(bool useGpu, int threads);
+    /** `threads` 0 picks a count. */
+    Runtime(GpuChoice gpu, int threads);
     ~Runtime();
     Runtime(const Runtime &) = delete;
     Runtime & operator=(const Runtime &) = delete;
