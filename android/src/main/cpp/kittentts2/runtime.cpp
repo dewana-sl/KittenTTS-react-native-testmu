@@ -98,7 +98,7 @@ const char * knownGpuProblem(ggml_backend_dev_t dev) {
         if (std::strcmp(properties.deviceName, name) == 0) vendor = properties.vendorID;
     });
     if (vendor == 0x5143) return "on Qualcomm Adreno GPUs ggml-vulkan loses the device (Adreno 750)";
-    if (vendor == 0x13B5) return "on Arm Mali GPUs ggml-vulkan gives noise, slower than the CPU (Mali-G715)";
+    if (vendor == 0x13B5) return "on Arm Mali GPUs ggml-vulkan is about 3x slower than the CPU (Mali-G715)";
 #else
     (void)name;
 #endif
