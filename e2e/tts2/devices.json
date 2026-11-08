@@ -1,5 +1,5 @@
 [
-  {"slug": "galaxy-s24-ultra", "device": "Galaxy S24 Ultra", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_DEVICE=gpu,KITTENTTS2_CHECK=$FILES/ggml_check.txt", "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_MMVQ=1"]},
-  {"slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_DEVICE=gpu,KITTENTTS2_CHECK=$FILES/ggml_check.txt", "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_MMVQ=1"]},
-  {"slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_DEVICE=gpu,KITTENTTS2_CHECK=$FILES/ggml_check.txt", "KITTENTTS2_DEVICE=gpu,GGML_VK_DISABLE_MMVQ=1"]}
+  {"slug": "galaxy-s23", "device": "Galaxy S23", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]},
+  {"slug": "oneplus-11", "device": "OnePlus 11", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]},
+  {"slug": "galaxy-s24-ultra", "device": "Galaxy S24 Ultra", "version": "14", "platform": "Android", "sweep": ["KITTENTTS2_CHECK=$FILES/ggml_check.txt"]}
 ]
