@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "ggml-cpu.h"
+#include "gpu_check.h"
 
 #ifdef KITTENTTS2_VULKAN
 #include <vulkan/vulkan.h>
@@ -213,6 +214,8 @@ void Graph::allocate(const Runtime & runtime, ggml_backend_sched_t sched) {
 }
 
 void Graph::compute(ggml_backend_sched_t sched) {
+    // KITTENTTS2_CHECK=<file>: a slow diagnostic for GPUs that fail (gpu_check.h).
+    if (computeChecked(sched, graph)) return;
     if (ggml_backend_sched_graph_compute(sched, graph) != GGML_STATUS_SUCCESS) {
         throw std::runtime_error("The computation failed");
     }
