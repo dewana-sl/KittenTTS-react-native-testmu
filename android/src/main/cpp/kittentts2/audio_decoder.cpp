@@ -259,9 +259,13 @@ struct AudioDecoder::Builder {
      * matmul, then ggml_rms_norm, which is the same normalisation. ggml_norm's
      * Vulkan shader runs padding rows that write past the tensor, which only
      * GPUs that drop out-of-bounds writes survive (the emulator's does not).
+     * The mean is a matrix-vector product, x's rows by 1/C: as one row times x,
+     * ggml-vulkan runs it with its small tiles, which give wrong sums in float32
+     * on Arm Mali GPUs.
      */
     ggml_tensor * layerNorm(ggml_tensor * x, const std::string & name, float eps) {
-        ggml_tensor * mean = matmul(ctx, decoder.meanVector(x->ne[0]), x);                    // [1, time]
+        ggml_tensor * rows = ggml_is_contiguous(x) ? x : ggml_cont(ctx, x);
+        ggml_tensor * mean = ggml_reshape_2d(ctx, matmul(ctx, rows, decoder.meanVector(x->ne[0])), 1, x->ne[1]);  // [1, time]
         ggml_tensor * normalised = ggml_rms_norm(ctx, ggml_sub(ctx, x, mean), eps);
         return ggml_add(ctx, ggml_mul(ctx, normalised, w(name + ".weight")), w(name + ".bias"));
     }
@@ -494,7 +498,11 @@ struct AudioDecoder::Builder {
         ggml_tensor * angle = ggml_sin(ctx, ggml_view_2d(ctx, x, frames, kBins, x->nb[1], kBins * x->nb[1]));
         ggml_tensor * complex = ggml_concat(ctx, ggml_mul(ctx, magnitude, ggml_cos(ctx, angle)),
                                             ggml_mul(ctx, magnitude, ggml_sin(ctx, angle)), 1);
-        return matmul(ctx, w("istft.basis"), ggml_cont(ctx, ggml_transpose(ctx, complex)));
+        // On the CPU, as the overlap-add after it: a 16-row product, which GPU
+        // matmul shaders handle worst (ggml-vulkan's small tiles are wrong on Mali).
+        ggml_tensor * frameSamples = matmul(ctx, w("istft.basis"), ggml_cont(ctx, ggml_transpose(ctx, complex)));
+        g.onCpu(frameSamples);
+        return frameSamples;
     }
 };
 

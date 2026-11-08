@@ -131,8 +131,10 @@ Runtime::Runtime(GpuChoice choice, int threads) {
     for (ggml_backend_dev_t dev : gpus) {
         if (wanted && *wanted && strcasecmp(backendOf(dev).c_str(), wanted) != 0) continue;
         const char * name = ggml_backend_dev_description(dev);
-        if (const char * problem = choice == GpuChoice::Auto ? knownGpuProblem(dev) : nullptr) {
-            // Skipped before ggml-vulkan starts it, which compiles its shaders and fills its memory.
+        const char * problem = knownGpuProblem(dev);
+        // KITTENTTS2_DEVICE=gpu tries a Vulkan GPU anyway, not an older Adreno on OpenCL: that would end the app.
+        if (problem && (choice == GpuChoice::Auto || backendOf(dev) == "OpenCL")) {
+            // Skipped before the backend starts it, which compiles its shaders and fills its memory.
             reason += (reason.empty() ? "" : "; ") + std::string(name) + ": " + problem;
             continue;
         }
@@ -229,6 +231,7 @@ ggml_tensor * Graph::input(ggml_type type, int64_t ne0, int64_t ne1, int64_t ne2
 void Graph::allocate(const Runtime & runtime, ggml_backend_sched_t sched) {
     runtime.checkSupported(graph);
     ggml_backend_sched_reset(sched);
+    for (ggml_tensor * t : cpuNodes_) ggml_backend_sched_set_tensor_backend(sched, t, runtime.cpu());
     if (!ggml_backend_sched_alloc_graph(sched, graph)) {
         throw std::runtime_error("Not enough memory for the computation");
     }

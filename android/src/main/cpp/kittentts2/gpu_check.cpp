@@ -114,6 +114,32 @@ Difference compareValues(const ggml_tensor * t, const std::vector<uint8_t> & gpu
     return d;
 }
 
+/** One ggml_mul_mat of random inputs on `backend`, its result as floats. */
+std::vector<float> runMatmul(ggml_backend_t backend, ggml_type type, int m, int k, int n, const std::vector<uint8_t> & a,
+                             const std::vector<float> & b) {
+    ggml_init_params params{ggml_tensor_overhead() * 4 + ggml_graph_overhead(), nullptr, true};
+    ggml_context * ctx = ggml_init(params);
+    ggml_tensor * ta = ggml_new_tensor_2d(ctx, type, k, m);
+    ggml_tensor * tb = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, k, n);
+    ggml_tensor * tc = ggml_mul_mat(ctx, ta, tb);
+    ggml_mul_mat_set_prec(tc, GGML_PREC_F32);
+    ggml_cgraph * graph = ggml_new_graph(ctx);
+    ggml_build_forward_expand(graph, tc);
+    ggml_backend_buffer_t buffer = ggml_backend_alloc_ctx_tensors(ctx, backend);
+    std::vector<float> out;
+    if (buffer) {
+        ggml_backend_tensor_set(ta, a.data(), 0, a.size());
+        ggml_backend_tensor_set(tb, b.data(), 0, b.size() * sizeof(float));
+        if (ggml_backend_graph_compute(backend, graph) == GGML_STATUS_SUCCESS) {
+            out.resize(static_cast<size_t>(m) * n);
+            ggml_backend_tensor_get(tc, out.data(), 0, out.size() * sizeof(float));
+        }
+        ggml_backend_buffer_free(buffer);
+    }
+    ggml_free(ctx);
+    return out;
+}
+
 struct OpStats {
     int gpuNodes = 0, cpuNodes = 0, checked = 0, differ = 0;
     double gpuMs = 0, cpuMs = 0, checkMs = 0, worst = 0;
@@ -128,6 +154,11 @@ public:
 
     void compute(ggml_backend_sched_t sched, ggml_cgraph * graph) {
         std::lock_guard<std::mutex> lock(mutex_);
+        ggml_backend_t gpu = ggml_backend_sched_get_backend(sched, 0);
+        if (!testedMatmuls_ && cpu_ && file_ && gpu && !ggml_backend_is_cpu(gpu)) {
+            testedMatmuls_ = true;
+            testMatmuls(gpu);
+        }
         const int nodes = ggml_graph_n_nodes(graph);
         // A single-position graph (a token step) and a longer one of the same size are different graphs.
         const std::string size = std::to_string(nodes) + (nodes && ggml_graph_node(graph, 0)->ne[1] == 1 ? "/1" : "/n");
@@ -173,6 +204,66 @@ private:
         uint64_t hash;
         int node;
     };
+
+    /**
+     * ggml-vulkan picks a matrix-product shader by shape: small tiles when either
+     * side is 32 or less, medium up to 64, large above, and a matrix-vector shader
+     * for one column. Each against the CPU on the same inputs.
+     */
+    void testMatmuls(ggml_backend_t gpu) {
+        struct Case { ggml_type type; int m, k, n; const char * what; };
+        std::vector<Case> cases = {
+            {GGML_TYPE_F32, 1, 512, 263, "a layer-norm mean"},
+            {GGML_TYPE_F32, 263, 512, 1, "the mean as a matrix-vector product"},
+            {GGML_TYPE_F32, 16, 18, 3481, "the inverse STFT"},
+            {GGML_TYPE_F16, 16, 18, 3481, "the inverse STFT"},
+        };
+        for (ggml_type type : {GGML_TYPE_F32, GGML_TYPE_F16, GGML_TYPE_Q4_0}) {
+            cases.push_back({type, 16, 512, 263, "small tiles, few rows"});
+            cases.push_back({type, 512, 512, 16, "small tiles, few columns"});
+            cases.push_back({type, 48, 512, 263, "medium tiles"});
+            cases.push_back({type, 512, 512, 48, "medium tiles, columns"});
+            cases.push_back({type, 512, 512, 263, "large tiles"});
+            cases.push_back({type, 512, 512, 1, "matrix-vector"});
+        }
+        line("matrix products on the GPU against the CPU:");
+        uint32_t seed = 1;
+        auto random = [&seed]() {
+            seed = seed * 1664525u + 1013904223u;
+            return static_cast<float>(seed >> 8) / 16777216.0f * 2.0f - 1.0f;
+        };
+        for (const Case & c : cases) {
+            std::vector<float> a(static_cast<size_t>(c.m) * c.k), b(static_cast<size_t>(c.k) * c.n);
+            for (float & v : a) v = random();
+            for (float & v : b) v = random();
+            std::vector<uint8_t> packed(ggml_row_size(c.type, c.k) * c.m);
+            ggml_quantize_chunk(c.type, a.data(), packed.data(), 0, c.m, c.k, nullptr);
+            std::vector<float> onGpu, onCpu;
+            std::string failed;
+            try {
+                onGpu = runMatmul(gpu, c.type, c.m, c.k, c.n, packed, b);
+                onCpu = runMatmul(cpu_, c.type, c.m, c.k, c.n, packed, b);
+            } catch (const std::exception & error) {
+                failed = error.what();
+            }
+            if (onGpu.empty() || onCpu.empty()) {
+                line("  %s %dx%d times %dx%d (%s): did not run %s", ggml_type_name(c.type), c.m, c.k, c.k, c.n, c.what,
+                     failed.c_str());
+                continue;
+            }
+            double diff = 0, ref = 0;
+            int64_t nonFinite = 0;
+            for (size_t i = 0; i < onGpu.size(); i++) {
+                if (!std::isfinite(onGpu[i])) { nonFinite++; continue; }
+                diff += (onGpu[i] - onCpu[i]) * (onGpu[i] - onCpu[i]);
+                ref += onCpu[i] * onCpu[i];
+            }
+            const double relative = ref > 0 ? std::sqrt(diff / ref) : 0;
+            line("  %s %dx%d times %dx%d (%s): relative error %.3g, non-finite %lld%s", ggml_type_name(c.type), c.m, c.k,
+                 c.k, c.n, c.what, relative, static_cast<long long>(nonFinite),
+                 relative > 0.05 || nonFinite ? "  WRONG" : "");
+        }
+    }
 
     static bool callback(ggml_tensor * t, bool ask, void * self) {
         return static_cast<Checker *>(self)->onNode(t, ask);
@@ -316,6 +407,7 @@ private:
     std::set<std::string> sizes_;
     std::map<std::string, OpStats> ops_;
     int graphs_ = 0, compared_ = 0;
+    bool testedMatmuls_ = false;
 
     // The graph being computed.
     ggml_backend_sched_t sched_ = nullptr;
