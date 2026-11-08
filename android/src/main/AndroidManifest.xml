@@ -1,1 +1,8 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- ggml's OpenCL backend (kittentts.ggml, Adreno GPUs) opens the phone's
+         libOpenCL.so; from Android 12 an app reaches it only when it asks. Optional:
+         phones without one run on Vulkan or the CPU. -->
+    <uses-native-library android:name="libOpenCL.so" android:required="false" />
+  </application>
+</manifest>

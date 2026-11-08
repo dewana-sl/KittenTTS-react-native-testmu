@@ -1,10 +1,12 @@
 #include "runtime.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <stdexcept>
+#include <strings.h>
 #include <thread>
 
 #include "ggml-cpu.h"
@@ -61,14 +63,35 @@ std::string vulkanSummary() {
 #endif
 }
 
+std::string backendOf(ggml_backend_dev_t dev) {
+    return ggml_backend_reg_name(ggml_backend_dev_backend_reg(dev));
+}
+
+/** The model number in an OpenCL device name such as "QUALCOMM Adreno(TM) 750", or 0. */
+int adrenoModel(const char * name) {
+    const char * at = std::strstr(name, "Adreno");
+    if (!at) return 0;
+    while (*at && !std::isdigit(static_cast<unsigned char>(*at))) at++;
+    return std::atoi(at);
+}
+
 /**
- * Why the GPU named `name` is left alone unless KITTENTTS2_DEVICE=gpu, or
- * nullptr. Each was measured on a real phone on TestMu (November 2026), with
+ * Why the GPU `dev` is left alone unless KITTENTTS2_DEVICE=gpu, or nullptr.
+ * Each Vulkan one was measured on a real phone on TestMu (November 2026), with
  * every ggml-vulkan setting that might have helped (see "Android" in
  * docs/guides/kitten-tts-2-on-device.md). Matched by Vulkan vendor ID, so the
  * whole family is left alone, not only the GPU that was measured.
  */
-const char * knownGpuProblem(const char * name) {
+const char * knownGpuProblem(ggml_backend_dev_t dev) {
+    const char * name = ggml_backend_dev_description(dev);
+    if (backendOf(dev) == "OpenCL") {
+        // ggml-opencl ends the process when a kernel does not compile, which its
+        // authors expect of the older Adreno 6xx drivers in phones; Qualcomm
+        // verified it on the 7xx and 8xx.
+        const int model = adrenoModel(name);
+        if (model >= 700 || std::strstr(name, "X1") || std::strstr(name, "X2")) return nullptr;
+        return "ggml-opencl is verified on Adreno 7xx and newer only";
+    }
 #ifdef KITTENTTS2_VULKAN
     uint32_t vendor = 0;
     eachVulkanDevice([&](const VkPhysicalDeviceProperties & properties) {
@@ -95,14 +118,22 @@ Runtime::Runtime(GpuChoice choice, int threads) {
     // Why the GPU is not used, reported as "CPU (<reason>)".
     std::string reason;
     if (choice == GpuChoice::Off) reason = "GPU turned off";
+    std::vector<ggml_backend_dev_t> gpus;
     for (size_t i = 0; choice != GpuChoice::Off && i < ggml_backend_dev_count(); i++) {
         ggml_backend_dev_t dev = ggml_backend_dev_get(i);
         auto type = ggml_backend_dev_type(dev);
-        if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU) continue;
+        if (type == GGML_BACKEND_DEVICE_TYPE_GPU || type == GGML_BACKEND_DEVICE_TYPE_IGPU) gpus.push_back(dev);
+    }
+    // ggml-opencl takes only Adreno GPUs, which Qualcomm wrote it for: on those it
+    // comes before Vulkan. KITTENTTS2_GPU_BACKEND=Vulkan (or OpenCL) takes only that one.
+    std::stable_partition(gpus.begin(), gpus.end(), [](ggml_backend_dev_t dev) { return backendOf(dev) == "OpenCL"; });
+    const char * wanted = std::getenv("KITTENTTS2_GPU_BACKEND");
+    for (ggml_backend_dev_t dev : gpus) {
+        if (wanted && *wanted && strcasecmp(backendOf(dev).c_str(), wanted) != 0) continue;
         const char * name = ggml_backend_dev_description(dev);
-        if (const char * problem = choice == GpuChoice::Auto ? knownGpuProblem(name) : nullptr) {
+        if (const char * problem = choice == GpuChoice::Auto ? knownGpuProblem(dev) : nullptr) {
             // Skipped before ggml-vulkan starts it, which compiles its shaders and fills its memory.
-            reason = std::string(name) + ": " + problem;
+            reason += (reason.empty() ? "" : "; ") + std::string(name) + ": " + problem;
             continue;
         }
         try {
@@ -110,7 +141,7 @@ Runtime::Runtime(GpuChoice choice, int threads) {
         } catch (const std::exception & error) {
             // ggml-vulkan throws for a GPU it cannot use (no 16-bit storage, say): run on the CPU.
             gpu_ = nullptr;
-            reason = std::string(name) + ": " + error.what();
+            reason += (reason.empty() ? "" : "; ") + std::string(name) + ": " + error.what();
         }
         if (gpu_) {
             device_ = std::string(ggml_backend_dev_name(dev)) + ": " + name;
