@@ -1,10 +1,12 @@
 # Kitten TTS 2's ggml engine (kittentts2/engine.h): the static library
 # kittentts2_engine, and on Android libkittentts2.so with the JNI bridge for
-# KittenTTS2GGMLModule.java. ggml is built in, with its Vulkan backend for the GPU.
+# KittenTTS2GGMLModule.java. ggml is built in, with its Vulkan backend for the GPU
+# and, on arm64 Android, its OpenCL backend for Adreno GPUs.
 #
-# ggml, Vulkan-Headers and SPIRV-Headers come from the pinned downloads below,
-# or from local folders: KITTENTTS2_GGML_SOURCE_DIR (a llama.cpp/ggml checkout),
-# KITTENTTS2_VULKAN_HEADERS_DIR and KITTENTTS2_SPIRV_HEADERS_DIR (their include folders).
+# ggml, Vulkan-Headers, SPIRV-Headers and OpenCL-Headers come from the pinned
+# downloads below, or from local folders: KITTENTTS2_GGML_SOURCE_DIR (a llama.cpp/ggml
+# checkout), KITTENTTS2_VULKAN_HEADERS_DIR and KITTENTTS2_SPIRV_HEADERS_DIR (their
+# include folders) and KITTENTTS2_OPENCL_HEADERS_DIR (the folder holding CL/).
 
 cmake_minimum_required(VERSION 3.19)
 project(kittentts2 C CXX)
@@ -16,10 +18,16 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(KITTENTTS2_GGML_SOURCE_DIR "" CACHE PATH "A ggml checkout to build instead of the pinned release")
 set(KITTENTTS2_VULKAN_HEADERS_DIR "" CACHE PATH "Vulkan-Headers' include folder")
 set(KITTENTTS2_SPIRV_HEADERS_DIR "" CACHE PATH "SPIRV-Headers' include folder")
+set(KITTENTTS2_OPENCL_HEADERS_DIR "" CACHE PATH "OpenCL-Headers' folder (the one holding CL/)")
 if(ANDROID)
     option(KITTENTTS2_VULKAN "Build ggml's Vulkan backend" ON)
 else()
     option(KITTENTTS2_VULKAN "Build ggml's Vulkan backend" OFF)
+endif()
+if(ANDROID AND ANDROID_ABI STREQUAL "arm64-v8a")
+    option(KITTENTTS2_OPENCL "Build ggml's OpenCL backend, for Adreno GPUs" ON)
+else()
+    option(KITTENTTS2_OPENCL "Build ggml's OpenCL backend, for Adreno GPUs" OFF)
 endif()
 
 include(FetchContent)
@@ -91,6 +99,28 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE NEVER)
     endif()
 endif()
 
+if(KITTENTTS2_OPENCL)
+    if(NOT KITTENTTS2_OPENCL_HEADERS_DIR)
+        FetchContent_Declare(kittentts2_opencl_headers
+            URL https://github.com/KhronosGroup/OpenCL-Headers/archive/refs/tags/v2025.07.22.tar.gz
+            URL_HASH SHA256=98f0a3ea26b4aec051e533cb1750db2998ab8e82eda97269ed6efe66ec94a240)
+        FetchContent_GetProperties(kittentts2_opencl_headers)
+        if(NOT kittentts2_opencl_headers_POPULATED)
+            FetchContent_Populate(kittentts2_opencl_headers)
+        endif()
+        set(KITTENTTS2_OPENCL_HEADERS_DIR "${kittentts2_opencl_headers_SOURCE_DIR}")
+    endif()
+    # ggml-opencl links whatever OpenCL_LIBRARY names. Not the phone's libOpenCL.so,
+    # which many phones lack (the engine would not load), but a loader that opens it
+    # when there is one (kittentts2/opencl_loader.cpp). ggml-opencl also needs Python
+    # on the build machine, to embed its kernels.
+    add_library(kittentts2_opencl_loader STATIC kittentts2/opencl_loader.cpp)
+    target_include_directories(kittentts2_opencl_loader PUBLIC "${KITTENTTS2_OPENCL_HEADERS_DIR}")
+    target_link_libraries(kittentts2_opencl_loader PRIVATE ${CMAKE_DL_LIBS})
+    set(OpenCL_INCLUDE_DIR "${KITTENTTS2_OPENCL_HEADERS_DIR}" CACHE PATH "" FORCE)
+    set(OpenCL_LIBRARY kittentts2_opencl_loader CACHE STRING "" FORCE)
+endif()
+
 # An app's debug build would otherwise build ggml unoptimised, which is too slow to use.
 foreach(lang C CXX)
     string(REPLACE "-O0" "" CMAKE_${lang}_FLAGS_DEBUG "${CMAKE_${lang}_FLAGS_DEBUG}")
@@ -98,6 +128,7 @@ foreach(lang C CXX)
 endforeach()
 
 set(GGML_VULKAN ${KITTENTTS2_VULKAN} CACHE BOOL "" FORCE)
+set(GGML_OPENCL ${KITTENTTS2_OPENCL} CACHE BOOL "" FORCE)
 set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)

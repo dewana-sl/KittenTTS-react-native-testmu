@@ -14,7 +14,7 @@ export type NativeBackend = 'mlx' | 'ggml';
 
 interface NativeEngineModule {
   isAvailable(): Promise<boolean>;
-  /** ggml only: "Vulkan0: <GPU name>", or "CPU" when there is no GPU it can use. */
+  /** ggml only: "Vulkan0: <GPU name>", "GPUOpenCL: <GPU name>", or "CPU (<why>)" when there is no GPU it can use. */
   device?(): Promise<string>;
   load(path: string, config: Record<string, number>): Promise<void>;
   generate(

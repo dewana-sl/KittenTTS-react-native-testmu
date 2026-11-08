@@ -17,8 +17,8 @@ import java.util.concurrent.Executors;
 
 /**
  * React Native's view of Kitten TTS 2's ggml engine (src/main/cpp/kittentts2):
- * the language model and the audio decoder on the GPU through Vulkan, or on the
- * CPU. It has the calls of the iOS MLX module (ios/KittenTTS2MLXModule.m), and
+ * the language model and the audio decoder on the GPU through Vulkan (OpenCL on
+ * Adreno GPUs), or on the CPU. It has the calls of the iOS MLX module (ios/KittenTTS2MLXModule.m), and
  * runs them one at a time on its own thread. libkittentts2.so is only in apps
  * built with kittentts.ggml=true; without it the module reports itself unavailable.
  */
@@ -33,6 +33,16 @@ public final class KittenTTS2GGMLModule extends ReactContextBaseJavaModule {
 
   public KittenTTS2GGMLModule(ReactApplicationContext context) {
     super(context);
+    // ggml's OpenCL backend (Adreno GPUs) keeps the kernels it compiles here, so
+    // only the first start compiles them. Read when the engine first looks for a GPU.
+    try {
+      if (android.system.Os.getenv("GGML_OPENCL_KERNEL_CACHE_DIR") == null) {
+        java.io.File cache = new java.io.File(context.getCacheDir(), "ggml-opencl");
+        android.system.Os.setenv("GGML_OPENCL_KERNEL_CACHE_DIR", cache.getPath(), false);
+      }
+    } catch (Exception error) {
+      // Without the cache it compiles them on every start.
+    }
   }
 
   private static boolean loadLibrary() {
@@ -55,7 +65,7 @@ public final class KittenTTS2GGMLModule extends ReactContextBaseJavaModule {
     promise.resolve(LOADED && nativeSupported());
   }
 
-  /** "Vulkan0: <GPU>", or "CPU (<why the GPU is not used>)". The first call looks for the GPU. */
+  /** "Vulkan0: <GPU>", "GPUOpenCL: <GPU>", or "CPU (<why the GPU is not used>)". The first call looks for the GPU. */
   @ReactMethod
   public void device(Promise promise) {
     run(promise, "GGML_DEVICE_FAILED", () -> nativeDevice());
