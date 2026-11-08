@@ -228,8 +228,9 @@ void LanguageModel::reserveCache(int capacity) {
     ggml_init_params params{ggml_tensor_overhead() * (2 * config_.layers + 2), nullptr, true};
     cacheCtx_ = ggml_init(params);
     for (int i = 0; i < config_.layers; i++) {
-        keys_.push_back(ggml_new_tensor_3d(cacheCtx_, GGML_TYPE_F16, config_.headDim, config_.kvHeads, capacity));
-        values_.push_back(ggml_new_tensor_3d(cacheCtx_, GGML_TYPE_F16, config_.headDim, config_.kvHeads, capacity));
+        const ggml_type type = runtime_.cacheType();
+        keys_.push_back(ggml_new_tensor_3d(cacheCtx_, type, config_.headDim, config_.kvHeads, capacity));
+        values_.push_back(ggml_new_tensor_3d(cacheCtx_, type, config_.headDim, config_.kvHeads, capacity));
     }
     cache_ = allocateTensors(cacheCtx_, runtime_.weightBuffer(), "language model's cache");
     ggml_backend_buffer_clear(cache_, 0);
@@ -296,7 +297,10 @@ std::vector<float> LanguageModel::forward(const std::vector<float> & embeddings,
                                                      scale, 0.0f, 0.0f);
         ggml_flash_attn_ext_set_prec(attended, GGML_PREC_F32);
         attended = ggml_reshape_2d(ctx, attended, c.headDim * c.heads, length);
-        x = ggml_add(ctx, x, matmul(ctx, layer.o, attended));
+        // Scaled like the down projection below: in the last layer the output
+        // reaches about 64,000, the edge of float16, which ggml-opencl's Adreno
+        // kernels hold it in (it came out infinite at some prompt positions).
+        x = ggml_add(ctx, x, ggml_scale(ctx, matmul(ctx, layer.o, ggml_scale(ctx, attended, 1.0f / kDownScale)), kDownScale));
 
         ggml_tensor * m = ggml_mul(ctx, ggml_rms_norm(ctx, x, c.rmsNormEps), layer.postAttentionNorm);
         ggml_tensor * mlp = ggml_swiglu_split(ctx, matmul(ctx, layer.gate, m), matmul(ctx, layer.up, m));
