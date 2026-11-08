@@ -147,20 +147,29 @@ async function runApp(address, timeoutMs, onReport = () => {}) {
   return { last, stopped };
 }
 
-/** Starts the app again in a new process, with `env` ("NAME=value,...") in its environment (scripts/gpu-env.py). */
-async function restartWith(env) {
+/** Ends the app and starts it again, in a new process. */
+async function restart() {
   // The engine reads its settings once per process, and startActivity's own stop did not always end it.
   await driver.terminateApp(BUNDLE_ID).catch(() => {});
-  const extras = env ? [['s', 'ggml_env', env]] : [];
   try {
-    await driver.execute('mobile: startActivity', { intent: `${BUNDLE_ID}/.MainActivity`, stop: true, wait: true, extras });
+    await driver.activateApp(BUNDLE_ID);
   } catch (error) {
-    // Older UiAutomator2 drivers take these names instead.
-    await driver.execute('mobile: startActivity', {
-      appPackage: BUNDLE_ID, appActivity: '.MainActivity', dontStopAppOnReset: false,
-      ...(env ? { optionalIntentArguments: `--es ggml_env "${env}"` } : {}),
-    }).catch(() => { throw error; });
+    await driver.execute('mobile: startActivity', { intent: `${BUNDLE_ID}/.MainActivity`, wait: true }).catch(() => { throw error; });
   }
+}
+
+/**
+ * Starts the app in a new process with `env` ("NAME=value,...") in its environment:
+ * the app saves the settings, and the next start sets them (scripts/gpu-env.py).
+ * TestMu's Appium did not deliver a launch intent's extras.
+ */
+async function restartWith(env) {
+  if (env) {
+    await restart();
+    const { last } = await runApp(`x#set-env#${env}`, 60000);
+    if (last?.status !== 'settings saved') throw new Error(`The app did not save the settings: ${last?.error ?? 'no report'}`);
+  }
+  await restart();
 }
 
 let result = {};

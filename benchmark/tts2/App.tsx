@@ -328,8 +328,15 @@ export default function App() {
   const start = () => {
     if (started.current || !base.trim()) return;
     started.current = true;
-    // "<address>#gpu-check" runs only the short GPU check; "<address>#auto" lets the SDK pick the engine.
-    const [address, mode] = base.trim().split('#');
+    // "<address>#gpu-check" runs only the short GPU check; "<address>#auto" lets the SDK pick the engine;
+    // "x#set-env#NAME=value,..." saves settings for the next start of the app (scripts/gpu-env.py).
+    const [address, mode, env = ''] = base.trim().split('#');
+    if (mode === 'set-env') {
+      RNFS.writeFile(`${RNFS.DocumentDirectoryPath}/ggml_env_next.txt`, env, 'utf8')
+        .then(() => setText(JSON.stringify({ status: 'settings saved', done: true, env })))
+        .catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
+      return;
+    }
     activateKeepAwakeAsync().catch(() => {}).finally(() => {
       run(address.replace(/\/+$/, ''), report => setText(JSON.stringify(report)), mode === 'gpu-check', mode === 'auto' ? 'auto' : BACKEND)
         .catch(error => setText(JSON.stringify({ done: true, error: message(error) })));
