@@ -212,6 +212,12 @@ async function run(base: string, publish: (report: object) => void, gpuCheck = f
       await step('one sentence', () => sentences(tts, JOBS.slice(0, 1)));
     }
     await tts?.dispose().catch(() => {});
+    // KITTENTTS2_CHECK=$FILES/ggml_check.txt: the engine's node-by-node check of the GPU against the CPU.
+    const checkFile = `${RNFS.DocumentDirectoryPath}/ggml_check.txt`;
+    if (!IOS && (await RNFS.exists(checkFile).catch(() => false))) {
+      const read = (path: string) => RNFS.readFile(path, 'utf8').catch((error: unknown) => message(error));
+      (report as any).check = { findings: (await read(checkFile)).slice(0, 30000), ops: (await read(`${checkFile}.ops`)).slice(0, 8000) };
+    }
     report.status = 'done';
     report.done = true;
     show(true);

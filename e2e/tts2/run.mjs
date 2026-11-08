@@ -108,6 +108,7 @@ const FULL = process.env.TTS2_FULL !== 'false';
 // The full run's mode, typed after the address: "auto" lets the SDK pick the engine.
 const MODE = process.env.TTS2_MODE || '';
 const SWEEP_TIMEOUT_MS = 6 * 60 * 1000;
+const CHECK_TIMEOUT_MS = 25 * 60 * 1000;
 
 /** Types the address into the app, taps Start and reads its report until it is done or stops. */
 async function runApp(address, timeoutMs, onReport = () => {}) {
@@ -194,8 +195,9 @@ if (SWEEP.length) {
     let entry;
     try {
       await restartWith(env);
-      const { last, stopped } = await runApp(`${base}#gpu-check`, SWEEP_TIMEOUT_MS);
-      entry = { env, process: last?.process, gpu: last?.gpu, device: last?.device, steps: last?.steps ?? [], done: Boolean(last?.done) };
+      // KITTENTTS2_CHECK runs every node alone and checks it on the CPU: much slower.
+      const { last, stopped } = await runApp(`${base}#gpu-check`, env.includes('KITTENTTS2_CHECK') ? CHECK_TIMEOUT_MS : SWEEP_TIMEOUT_MS);
+      entry = { env, process: last?.process, gpu: last?.gpu, device: last?.device, steps: last?.steps ?? [], check: last?.check, done: Boolean(last?.done) };
       if (!last?.done) Object.assign(entry, { error: `${stopped} Last status: ${last?.status ?? 'none'}`, deviceLog: await deviceLog(true) });
     } catch (error) {
       entry = { env, done: false, error: `Could not start the app: ${error?.message ?? error}` };

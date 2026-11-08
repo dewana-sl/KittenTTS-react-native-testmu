@@ -60,5 +60,11 @@ if (swept.length) {
     }
   }
 }
+// The engine's node-by-node GPU checks (KITTENTTS2_CHECK).
+for (const r of swept) {
+  for (const e of r.sweep.filter(e => e.check)) {
+    lines.push('', `## GPU check: ${r.deviceName}, ${e.gpu || e.device || '?'}`, '', '```', e.check.findings.trim(), '```', '', '```', e.check.ops.trim(), '```');
+  }
+}
 lines.push('', 'RTF is seconds of generating per second of speech. "Whole" is the 8 sentences end to end; "Decoder" is the audio decoder alone on the same 19 s of codec tokens (median of 4 rounds, decoders taking turns).');
 process.stdout.write(`${lines.join('\n')}\n`);

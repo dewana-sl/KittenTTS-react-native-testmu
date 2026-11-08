@@ -1,7 +1,4 @@
 [
-  { "slug": "iphone-15", "device": "iPhone 15", "version": "17", "platform": "iOS" },
-  { "slug": "iphone-13", "device": "iPhone 13", "version": "17", "platform": "iOS" },
-  { "slug": "iphone-16", "device": "iPhone 16", "version": "18", "platform": "iOS" },
-  { "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "mode": "auto", "sweep": ["", "KITTENTTS2_DEVICE=gpu"] },
-  { "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "mode": "auto", "sweep": ["", "KITTENTTS2_DEVICE=gpu"] }
+  { "slug": "galaxy-s24", "device": "Galaxy S24", "version": "14", "platform": "Android", "full": false, "sweep": ["KITTENTTS2_DEVICE=gpu,KITTENTTS2_CHECK=$FILES/ggml_check.txt"] },
+  { "slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android", "full": false, "sweep": ["KITTENTTS2_DEVICE=gpu,KITTENTTS2_CHECK=$FILES/ggml_check.txt"] }
 ]

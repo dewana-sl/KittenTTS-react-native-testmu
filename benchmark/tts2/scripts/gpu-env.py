@@ -5,7 +5,7 @@ files/ggml_env_next.txt when Appium types "x#set-env#<settings>"; the next start
 reads and deletes that file. A launch intent's "ggml_env" extra works too, but
 TestMu's Appium did not deliver one. The process writes its id and the settings
 it got to files/ggml_env.txt, which the app puts in its report: a setting only
-counts in a new process. Test only, for trying settings on TestMu's phones.
+counts in a new process. "$FILES" in a value is the app's files folder. Test only, for trying settings on TestMu's phones.
 """
 import pathlib, re, sys
 
@@ -19,7 +19,7 @@ if "ggml_env" not in text:
         "    nextEnv.delete()\n"
         "    ggmlEnv.split(',', ';').filter { it.contains('=') }.forEach {\n"
         "      val (name, value) = it.split('=', limit = 2)\n"
-        "      android.system.Os.setenv(name.trim(), value.trim(), true)\n"
+        "      android.system.Os.setenv(name.trim(), value.trim().replace(\"\\$FILES\", filesDir.path), true)\n"
         "    }\n"
         "    java.io.File(filesDir, \"ggml_env.txt\").writeText(\"${android.os.Process.myPid()} $ggmlEnv\")"
     )
