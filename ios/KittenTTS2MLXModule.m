@@ -4,6 +4,8 @@
 
 #import <React/RCTBridgeModule.h>
 
+#import "KittenTTS2MetalCompat.h"
+
 #if __has_include(<KittenTTSReactNative/KittenTTSReactNative-Swift.h>)
 #import <KittenTTSReactNative/KittenTTSReactNative-Swift.h>
 #else
@@ -32,6 +34,7 @@ RCT_EXPORT_METHOD(load:(NSString *)path
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
+  KittenTTS2InstallMetalCompat();
   [KittenTTS2MLXEngine.shared loadWithPath:path config:config completion:^(NSError *error) {
     if (error) {
       reject(@"MLX_LOAD_FAILED", error.localizedDescription, error);
@@ -67,6 +70,7 @@ RCT_EXPORT_METHOD(loadDecoder:(NSString *)path
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
 {
+  KittenTTS2InstallMetalCompat();
   [KittenTTS2MLXEngine.shared loadDecoderWithPath:path completion:^(NSError *error) {
     if (error) {
       reject(@"MLX_LOAD_FAILED", error.localizedDescription, error);
