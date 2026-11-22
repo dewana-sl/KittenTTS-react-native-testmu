@@ -34,6 +34,30 @@ jobs:
             require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `ios=${pick("iOS")}\nandroid=${pick("Android")}\n`);
           '
 
+      # The phones TestMu has now, by the exact names devices.json must use (it hands out
+      # another phone when a name or version does not match).
+      - name: List TestMu's real devices
+        continue-on-error: true
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          curl -sS --fail -u "$LT_USERNAME:$LT_ACCESS_KEY" \
+            "https://mobile-api.lambdatest.com/mobile-automation/api/v1/list?region=us" -o testmu-devices.json
+          node -e '
+            const raw = JSON.parse(require("fs").readFileSync("testmu-devices.json", "utf8"));
+            const list = Array.isArray(raw) ? raw : raw.data ?? raw.devices ?? [];
+            const rows = list.map(d => `| ${d.platformName} | ${d.deviceName} | ${d.platformVersion} | ${d.deviceStatus ?? ""} |`).sort();
+            console.log(["## TestMu real devices (us)", "", "| Platform | Device | Version | Status |", "| --- | --- | --- | --- |", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tiny-testmu-devices
+          path: testmu-devices.json
+          if-no-files-found: ignore
+
   ios-app:
     name: iOS app
     needs: plan
