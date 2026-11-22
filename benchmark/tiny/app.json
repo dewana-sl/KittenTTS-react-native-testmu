@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "tinybench",
+    "slug": "tinybench",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "ios": { "bundleIdentifier": "dev.stellon.tinybench" },
+    "android": { "package": "dev.stellon.tinybench" }
+  }
+}

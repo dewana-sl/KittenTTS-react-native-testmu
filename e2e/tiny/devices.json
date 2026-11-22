@@ -1,0 +1,8 @@
+[
+  {"slug": "iphone-16", "device": "iPhone 16", "version": "18", "platform": "iOS"},
+  {"slug": "iphone-15", "device": "iPhone 15", "version": "17", "platform": "iOS"},
+  {"slug": "iphone-13", "device": "iPhone 13", "version": "17", "platform": "iOS"},
+  {"slug": "galaxy-s24-ultra", "device": "Galaxy S24 Ultra", "version": "14", "platform": "Android"},
+  {"slug": "pixel-8", "device": "Pixel 8", "version": "14", "platform": "Android"},
+  {"slug": "galaxy-s21", "device": "Galaxy S21", "version": "12", "platform": "Android"}
+]

@@ -1,0 +1,11 @@
+{
+  "name": "kittentts-tiny-appium",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "webdriverio": "^9.20.0"
+  }
+}

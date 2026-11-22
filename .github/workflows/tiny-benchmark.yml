@@ -1,0 +1,292 @@
+name: Kitten TTS 2 Nano, Pico and Mini benchmark
+
+# The small Kitten TTS 2 models on TestMu (LambdaTest) real devices. The app (benchmark/tiny)
+# downloads the models from Hugging Face and the text data from the SDK's default URL, as a
+# user's app would, runs every model on several languages and shows its report; the runner
+# (e2e/tiny/run.mjs) reads it through Appium.
+
+on:
+  push:
+    branches: [kitten-tts-2-tiny-benchmark]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tiny-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Devices
+    runs-on: ubuntu-latest
+    outputs:
+      ios: ${{ steps.plan.outputs.ios }}
+      android: ${{ steps.plan.outputs.android }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        run: |
+          node -e '
+            const devices = require("./e2e/tiny/devices.json");
+            const pick = platform => JSON.stringify(devices.filter(d => d.platform === platform));
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `ios=${pick("iOS")}\nandroid=${pick("Android")}\n`);
+          '
+
+  ios-app:
+    name: iOS app
+    needs: plan
+    if: needs.plan.outputs.ios != '[]'
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      app_url: ${{ steps.upload.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: artifacts/tinybench.ipa
+          key: tiny-ios-${{ hashFiles('src/**', 'ios/**', 'app.plugin.js', 'package-lock.json', 'benchmark/tiny/**') }}
+
+      - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+
+      - name: Use the newest Xcode
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          xcode="$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | grep -vi beta | sort -V | tail -1)"
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      - name: Pack the SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: |
+          npm ci --ignore-scripts
+          npm run build:ts
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+
+      - name: Install the app
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        working-directory: benchmark/tiny
+        run: |
+          npm ci
+          npm install "$RUNNER_TEMP"/kittentts-react-native-*.tgz
+          (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
+
+      - name: Generate the iOS project
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        working-directory: benchmark/tiny
+        run: |
+          CI=1 npx expo prebuild --platform ios --no-install
+          python3 scripts/scene-fix.py .
+          cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
+
+      - name: Build an unsigned IPA
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 35
+        working-directory: benchmark/tiny
+        run: |
+          set -o pipefail
+          xcodebuild -workspace ios/tinybench.xcworkspace -scheme tinybench -configuration Release \
+            -sdk iphoneos -destination generic/platform=iOS -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build > "$RUNNER_TEMP/xcodebuild.log" 2>&1 \
+            || { grep -E "error:|BUILD FAILED" "$RUNNER_TEMP/xcodebuild.log" | sort -u | head -40; tail -40 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/dd/Build/Products/Release-iphoneos/tinybench.app" "$RUNNER_TEMP/ipa/Payload/"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$GITHUB_WORKSPACE/artifacts/tinybench.ipa" Payload)
+          ls -la "$GITHUB_WORKSPACE/artifacts/tinybench.ipa"
+
+      - id: upload
+        name: Upload the IPA to TestMu
+        timeout-minutes: 10
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
+            "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS2Tiny_iOS_${GITHUB_RUN_ID}" --form "appFile=@artifacts/tinybench.ipa")"
+          app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+  android-app:
+    name: Android app
+    needs: plan
+    if: needs.plan.outputs.android != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    outputs:
+      app_url: ${{ steps.upload.outputs.app_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: artifacts/tinybench.apk
+          key: tiny-android-${{ hashFiles('src/**', 'android/**', 'app.plugin.js', 'package-lock.json', 'benchmark/tiny/**') }}
+
+      - uses: actions/setup-node@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Pack the SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        run: |
+          npm ci --ignore-scripts
+          npm run build:ts
+          npm pack --ignore-scripts --pack-destination "$RUNNER_TEMP"
+
+      - name: Install the app
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        working-directory: benchmark/tiny
+        run: |
+          npm ci
+          npm install "$RUNNER_TEMP"/kittentts-react-native-*.tgz
+          (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
+
+      - name: Generate the Android project
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 10
+        working-directory: benchmark/tiny
+        run: CI=1 npx expo prebuild --platform android --no-install
+
+      - name: Build the release APK
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 55
+        working-directory: benchmark/tiny/android
+        run: |
+          ./gradlew assembleRelease --no-daemon
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/artifacts/tinybench.apk"
+          ls -la "$GITHUB_WORKSPACE/artifacts/tinybench.apk"
+
+      - id: upload
+        name: Upload the APK to TestMu
+        timeout-minutes: 10
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+        run: |
+          response="$(curl -sS -u "$LT_USERNAME:$LT_ACCESS_KEY" --location --request POST \
+            "https://manual-api.lambdatest.com/app/upload/realDevice" \
+            --form "name=KittenTTS2Tiny_Android_${GITHUB_RUN_ID}" --form "appFile=@artifacts/tinybench.apk")"
+          app_url="$(node -e 'const r = JSON.parse(process.argv[1]); const u = r.app_url || r.appUrl; if (!String(u).startsWith("lt://")) { console.error(process.argv[1]); process.exit(1); } process.stdout.write(u);' "$response")"
+          echo "app_url=$app_url" >> "$GITHUB_OUTPUT"
+
+  ios:
+    name: iOS ${{ matrix.device }}
+    needs: [plan, ios-app]
+    if: needs.plan.outputs.ios != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TESTMU_PLATFORM: iOS
+      TESTMU_APP_URL: ${{ needs.ios-app.outputs.app_url }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.ios) }}
+    steps: &device-steps
+      - uses: actions/checkout@v4
+
+      # WebdriverIO's worker dies on Node 22 ("write EINVAL"); the TestMu CI runs it on 20.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Appium's client
+        working-directory: e2e/tiny
+        run: npm ci
+
+      - name: Run the benchmark on the device
+        timeout-minutes: 50
+        continue-on-error: true
+        working-directory: e2e/tiny
+        env:
+          LT_USERNAME: ${{ secrets.LT_USERNAME }}
+          LT_ACCESS_KEY: ${{ secrets.LT_ACCESS_KEY }}
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_VERSION: ${{ matrix.version }}
+          TINY_REPORT: reports/${{ matrix.slug }}.json
+        run: npm test
+
+      - name: Keep a report even when the device never sent one
+        if: always()
+        env:
+          TESTMU_DEVICE: ${{ matrix.device }}
+          TESTMU_VERSION: ${{ matrix.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const file = process.argv[1];
+            if (fs.existsSync(file)) process.exit(0);
+            fs.mkdirSync("e2e/tiny/reports", { recursive: true });
+            fs.writeFileSync(file, JSON.stringify({
+              deviceName: process.env.TESTMU_DEVICE, platformName: process.env.TESTMU_PLATFORM,
+              platformVersion: process.env.TESTMU_VERSION, done: false, error: "No report from the device; see the job log.",
+            }));
+          ' "e2e/tiny/reports/${{ matrix.slug }}.json"
+          node e2e/tiny/report.js e2e/tiny/reports >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tiny-report-${{ matrix.slug }}
+          path: e2e/tiny/reports
+
+  android:
+    name: Android ${{ matrix.device }}
+    needs: [plan, android-app, ios]
+    if: ${{ !cancelled() && needs.plan.outputs.android != '[]' && needs.android-app.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TESTMU_PLATFORM: Android
+      TESTMU_APP_URL: ${{ needs.android-app.outputs.app_url }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.android) }}
+    steps: *device-steps
+
+  report:
+    name: Report
+    needs: [ios, android]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: tiny-report-*
+          path: reports
+          merge-multiple: true
+      - name: Summarise
+        run: node e2e/tiny/report.js reports | tee summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tiny-summary
+          path: |
+            summary.md
+            reports
