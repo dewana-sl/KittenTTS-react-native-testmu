@@ -23,10 +23,13 @@ const TEXTS: Record<string, string[]> = {
   pt: ['Olá, tudo bem? Hoje está um dia bonito.'],
 };
 
-const LONG = 'The little cat sat by the window and watched the rain fall over the quiet town. '
+// Long enough for several chunks (350 phonemes each), so the first chunk shows how soon
+// audio can start.
+const PARAGRAPH = 'The little cat sat by the window and watched the rain fall over the quiet town. '
   + 'Every evening the baker closed his shop at six, swept the floor, and walked home along the river. '
   + 'On Sundays the market filled the square with apples, bread, flowers and old books, and children '
   + 'ran between the stalls while their parents argued happily about prices.';
+const LONG = [PARAGRAPH, PARAGRAPH, PARAGRAPH].join(' ');
 
 type Model = 'kitten-tts-2-nano' | 'kitten-tts-2-pico' | 'kitten-tts-2-mini';
 const RUNS: Array<{ model: Model; weights: 'int8' | 'int4'; langs: string[]; stream?: boolean }> = [
