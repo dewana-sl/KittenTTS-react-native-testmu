@@ -1,1 +1,10 @@
-[]
+[
+  {"slug": "iphone-xs", "device": "iPhone XS", "version": "15", "platform": "iOS"},
+  {"slug": "iphone-11", "device": "iPhone 11", "version": "15", "platform": "iOS"},
+  {"slug": "iphone-se-2020", "device": "iPhone SE (2020)", "version": "17", "platform": "iOS"},
+  {"slug": "galaxy-tab-s3", "device": "Galaxy Tab S3", "version": "9", "platform": "Android"},
+  {"slug": "galaxy-s10", "device": "Galaxy S10", "version": "11", "platform": "Android"},
+  {"slug": "pixel-4a", "device": "Pixel 4a", "version": "12", "platform": "Android"},
+  {"slug": "huawei-p30-pro", "device": "Huawei P30 Pro", "version": "10", "platform": "Android"},
+  {"slug": "moto-g54", "device": "Moto G54 5G", "version": "15", "platform": "Android"}
+]

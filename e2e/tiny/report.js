@@ -27,4 +27,16 @@ for (const r of reports) {
       + `${s ? `${s.rtfMedian} (${s.rtfMin}-${s.rtfMax})` : '-'} | ${s ? `${s.phonMsMedian} ms` : '-'} | ${stream} | ${status} |`);
   }
 }
+// The memory test: resident memory (MB) after each phase's first and last step, and the
+// growth per step after the first (a leak grows every step; waiting garbage goes up and down).
+out.push('', '### Memory (RSS, MB)', '');
+out.push('| Got | Start | Nano create/dispose ×8: first → last (growth/cycle) | Mini + Japanese ×4 | Nano generate ×60 | Nano stream ×5 | End |');
+out.push('| --- | --- | --- | --- | --- | --- | --- |');
+for (const r of reports) {
+  const m = r.memory?.summary;
+  if (!m) continue;
+  const got = r.device ? `${r.device.brand ?? ''} ${r.device.model ?? ''}`.trim() : r.deviceName;
+  const cell = p => (m[p] ? `${m[p].firstMB} → ${m[p].lastMB} (${m[p].growthPerStepMB >= 0 ? '+' : ''}${m[p].growthPerStepMB})` : '-');
+  out.push(`| ${got} | ${m.startMB} | ${cell('nano-cycle')} | ${cell('mini-ja-cycle')} | ${cell('nano-generate')} | ${cell('nano-stream')} | ${m.endMB} |`);
+}
 console.log(out.join('\n'));

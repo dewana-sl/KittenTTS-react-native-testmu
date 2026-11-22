@@ -15,7 +15,8 @@ const deviceName = required('TESTMU_DEVICE');
 const platformVersion = required('TESTMU_VERSION');
 const app = required('TESTMU_APP_URL');
 const REPORT = process.env.TINY_REPORT || 'reports/tiny.json';
-const TIMEOUT_MS = Number(process.env.TINY_TIMEOUT_MS || 40 * 60 * 1000);
+// Old phones need longer: Mini runs near real time there, then the memory test.
+const TIMEOUT_MS = Number(process.env.TINY_TIMEOUT_MS || 65 * 60 * 1000);
 const BUNDLE_ID = 'dev.stellon.tinybench';
 
 function save(report) {

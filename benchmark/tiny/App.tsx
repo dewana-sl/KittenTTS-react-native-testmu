@@ -1,12 +1,14 @@
 // Kitten TTS 2 Nano / Pico / Mini benchmark for real devices (TestMu). It starts on
-// launch, downloads the models and text data from Hugging Face like any app would, and
-// shows its report as JSON (accessibility label "tiny-report") so the runner can read it
-// while it runs: a crash still leaves the steps that finished.
+// launch, downloads the models and text data from Hugging Face like any app would, runs
+// each model, then a memory test (leaks.ts), and shows its report as JSON (accessibility
+// id "tiny-report") so the runner can read it while it runs: a crash still leaves the
+// steps that finished.
 import { useEffect, useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import * as Device from 'expo-device';
 import { activateKeepAwakeAsync } from 'expo-keep-awake';
 import { KittenTTS } from '@kittentts/react-native';
+import { leakTest } from './leaks';
 
 const TEXTS: Record<string, string[]> = {
   en: [
@@ -111,6 +113,8 @@ export default function App() {
         };
         await tts.dispose();
       }
+      show('memory');
+      r.memory = await leakTest({ en: TEXTS.en[0], de: TEXTS.de[0], ja: TEXTS.ja[0], long: LONG }, show);
       r.done = true;
       show('done');
     })().catch(e => {
