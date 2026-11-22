@@ -16,11 +16,14 @@ import { TinyFrontend } from './frontend/Frontend';
 import { ENGLISH_G2P_FILES, ENGLISH_TEXT_FILES, loadEnglishG2P } from './frontend/english/load';
 import { pyLower } from './frontend/english/pystr';
 import type { EspeakG2P } from './frontend/espeak/EspeakG2P';
+import type { JapaneseG2P } from './frontend/japanese/JapaneseG2P';
 import type { OrtLike } from './ort';
 import { createSession } from './ort';
 import type { KittenTinyModel, KittenTinyWeights, TinyRepoConfig, TinyVoice } from './TinyRepo';
 import { huggingFaceResolveURL, modelFiles, onnxWeights, tinyRepoId } from './TinyRepo';
 import { GAP_SECONDS, TinySynth } from './TinySynth';
+import type { PhonemeWordTime } from './WordTimings';
+import { phonemeWordTimes, wordTimings } from './WordTimings';
 
 /**
  * Where the text front end's data lives: misaki's lexicons, spaCy's tokenizer and tagger
@@ -106,6 +109,7 @@ export interface KittenTTS2TinyVoice {
   name: string;
   description: string;
   language: string;
+  [field: string]: unknown;
 }
 
 interface Platform {
@@ -145,6 +149,7 @@ export class KittenTTS2Tiny {
     this.frontend = new TinyFrontend(config.phonemizer ?? 'v1', vocab, {
       english: v1 => this.loadEnglish(v1),
       espeak: lang => this.loadEspeak(lang),
+      japanese: () => this.loadJapanese(),
     });
     this.synth = new TinySynth(platform.ort, vocab, async file => {
       const key = this.modelKey(file);
@@ -223,9 +228,9 @@ export class KittenTTS2Tiny {
   /** The voices of one language (default: all), with key, name, description and language. */
   voices(language?: string): KittenTTS2TinyVoice[] {
     const langs = language ? [this.language(language)] : this.languages;
+    // Every field the repository's config has for the voice, plus its language, as in Python.
     return langs.flatMap(lang => (this.config.voices[lang] ?? []).map(v => ({
-      key: v.key,
-      name: v.name,
+      ...v,
       description: v.description ?? '',
       language: lang,
     })));
@@ -277,31 +282,48 @@ export class KittenTTS2Tiny {
     return this.frontend.phonemize(text, lang);
   }
 
-  /** Synthesize `text`: 24 kHz float32 audio. Long text is cut at sentence ends and joined with 0.15 s of silence. */
+  /**
+   * Synthesize `text`: 24 kHz float32 audio. Long text is cut at sentence ends and joined
+   * with 0.15 s of silence. `wordTimings` gives each input word's time range.
+   */
   async generate(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): Promise<KittenTTSResult<string>> {
     const opts = normalizeOptions(voiceOrOptions, speed);
-    const parts: Float32Array[] = [];
-    let voiceName = '';
-    for await (const r of this.generateStreaming(text, opts)) {
-      parts.push(r.samples);
-      voiceName = r.voice;
-    }
     const gap = Math.floor(GAP_SECONDS * this.sampleRate);
-    const total = parts.reduce((n, p) => n + p.length, 0) + gap * Math.max(0, parts.length - 1);
-    const samples = new Float32Array(total);
-    let at = 0;
+    const parts: Float32Array[] = [];
+    const groups: PhonemeWordTime[] = [];
+    let offset = 0;
+    let lang = '';
+    let name = '';
+    for await (const c of this.chunks(text, opts)) {
+      if (parts.length) offset += gap;
+      const at = offset / this.sampleRate;
+      for (const g of c.groups) groups.push({ phonemes: g.phonemes, start: g.start + at, end: g.end + at });
+      parts.push(c.samples);
+      offset += c.samples.length;
+      lang = c.lang;
+      name = c.voice;
+    }
+    const samples = new Float32Array(offset);
+    let pos = 0;
     parts.forEach((p, i) => {
-      samples.set(p, at);
-      at += p.length + (i < parts.length - 1 ? gap : 0);
+      samples.set(p, pos);
+      pos += p.length + (i < parts.length - 1 ? gap : 0);
     });
-    if (!voiceName) voiceName = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
-    return new KittenTTSResult(samples, this.sampleRate, voiceName, opts.speed ?? 1, text);
+    if (!name) name = this.voiceName(...this.resolveVoice(opts.voice, opts.language));
+    return new KittenTTSResult(samples, this.sampleRate, name, opts.speed ?? 1, text, wordTimings(text, lang, groups));
   }
 
   /** Synthesize chunk by chunk, yielding each as soon as it is ready. */
   async *generateStreaming(text: string, voiceOrOptions?: string | KittenTTS2TinyGenerateOptions, speed?: number): AsyncGenerator<KittenTTSResult<string>, void, void> {
-    this.ensureOpen();
     const opts = normalizeOptions(voiceOrOptions, speed);
+    for await (const c of this.chunks(text, opts)) {
+      yield new KittenTTSResult(c.samples, this.sampleRate, c.voice, opts.speed ?? 1, text);
+    }
+  }
+
+  private async *chunks(text: string, opts: KittenTTS2TinyGenerateOptions):
+    AsyncGenerator<{ samples: Float32Array; groups: PhonemeWordTime[]; lang: string; voice: string }, void, void> {
+    this.ensureOpen();
     const s = opts.speed ?? 1;
     if (!Number.isFinite(s) || s <= 0) throw KittenTTSError.invalidArgument(`speed must be a positive number, got ${s}`);
     if (!text || !text.trim()) throw KittenTTSError.emptyInput();
@@ -318,16 +340,17 @@ export class KittenTTS2Tiny {
     const file = modelFiles(entry)[this.weights] as string;
     const pack = (await this.pack(lang))[key];
     if (!pack) throw KittenTTSError.invalidModelData(`voices for ${lang} have no ${key}`);
-    const name = this.voiceName(lang, key);
+    const voice = this.voiceName(lang, key);
     for (let i = 0; i < chunks.length; i++) {
       this.ensureOpen();
-      let samples: Float32Array;
+      let out: { samples: Float32Array; durations: number[]; lead: number; spf: number };
       try {
-        samples = await this.synth.chunk(file, pack, chunks[i], s, i === 0);
+        out = await this.synth.chunkDetailed(file, pack, chunks[i], s, i === 0);
       } catch (error) {
         throw KittenTTSError.inferenceFailed(errorMessage(error), error);
       }
-      yield new KittenTTSResult(samples, this.sampleRate, name, s, text);
+      const groups = phonemeWordTimes(chunks[i], this.vocab, out.durations, out.spf, out.lead, this.sampleRate, out.samples.length);
+      yield { samples: out.samples, groups, lang, voice };
     }
   }
 
@@ -360,6 +383,7 @@ export class KittenTTS2Tiny {
     await this.stopSpeaking().catch(() => {});
     await this.synth.dispose();
     if (this.espeak) (await this.espeak.catch(() => null))?.dispose();
+    if (this.japanese) (await this.japanese.catch(() => null))?.dispose();
   }
 
   // ---- files ------------------------------------------------------------------------------
@@ -424,6 +448,10 @@ export class KittenTTS2Tiny {
     if (lang === 'en') {
       textFiles = [...ENGLISH_TEXT_FILES];
       model.push(...ENGLISH_G2P_FILES.map(f => this.modelRequest(f.replace(/^g2p\//, `${g2pDir}/`))));
+    } else if (lang === 'ja') {
+      // UniDic for MeCab, rebuilt compact (65 MB unpacked); only Mini speaks Japanese.
+      const { JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
+      textFiles = [...JAPANESE_DATA_FILES];
     } else {
       // Loaded lazily so apps that only speak English never load espeak-ng.
       const { espeakDataFilesFor } = await import('./frontend/espeak/EspeakG2P');
@@ -479,6 +507,20 @@ export class KittenTTS2Tiny {
       this.platform.ort,
       vocabV1,
     );
+  }
+
+  private japanese: Promise<JapaneseG2P> | null = null;
+
+  private loadJapanese(): Promise<JapaneseG2P> {
+    this.japanese ??= (async () => {
+      const { JapaneseG2P, JAPANESE_DATA_FILES } = await import('./frontend/japanese/JapaneseG2P');
+      const files: Record<string, Uint8Array> = {};
+      // JapaneseG2P keeps views on these arrays (no copies): they belong to it from here.
+      for (const f of JAPANESE_DATA_FILES) files[f] = await this.platform.store.bytes(`${TEXT_DIR}/${f}`);
+      return JapaneseG2P.create(files);
+    })();
+    this.japanese.catch(() => { this.japanese = null; });
+    return this.japanese;
   }
 
   private loadEspeak(lang: string): Promise<EspeakG2P> {
