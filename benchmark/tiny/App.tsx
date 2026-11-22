@@ -123,7 +123,9 @@ export default function App() {
   return (
     <ScrollView contentContainerStyle={styles.box}>
       <Text style={styles.status}>{report.status}</Text>
-      <Text accessibilityLabel="tiny-report" testID="tiny-report" style={styles.json}>{json}</Text>
+      {/* Appium finds it by accessibility id: testID on iOS, accessibilityLabel on Android. An
+          accessibilityLabel on iOS would hide the JSON (the label replaces the text). */}
+      <Text {...(Platform.OS === 'android' ? { accessibilityLabel: 'tiny-report' } : {})} testID="tiny-report" style={styles.json}>{json}</Text>
     </ScrollView>
   );
 }
