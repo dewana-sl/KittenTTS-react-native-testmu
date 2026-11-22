@@ -21,6 +21,7 @@ const TEXTS: Record<string, string[]> = {
   hi: ['नमस्ते, आप कैसे हैं? आज मौसम अच्छा है।'],
   it: ['Buongiorno, come stai oggi?'],
   pt: ['Olá, tudo bem? Hoje está um dia bonito.'],
+  ja: ['今日はいい天気ですね。東京タワーに行きましょう！', '会議は午後3時から始まります。'],
 };
 
 // Long enough for several chunks (350 phonemes each), so the first chunk shows how soon
@@ -35,7 +36,7 @@ type Model = 'kitten-tts-2-nano' | 'kitten-tts-2-pico' | 'kitten-tts-2-mini';
 const RUNS: Array<{ model: Model; weights: 'int8' | 'int4'; langs: string[]; stream?: boolean }> = [
   { model: 'kitten-tts-2-nano', weights: 'int8', langs: ['en', 'de', 'fr', 'es', 'ru', 'hi', 'it', 'pt'], stream: true },
   { model: 'kitten-tts-2-pico', weights: 'int4', langs: ['en', 'de'], stream: true },
-  { model: 'kitten-tts-2-mini', weights: 'int8', langs: ['en', 'fr'], stream: true },
+  { model: 'kitten-tts-2-mini', weights: 'int8', langs: ['en', 'fr', 'ja'], stream: true },
 ];
 
 const median = (xs: number[]) => {
@@ -85,6 +86,7 @@ export default function App() {
               lang, i, text, chunks, phonMs, genMs, firstUseMs: i === 0 ? firstUseMs : undefined,
               seconds: +res.duration.toFixed(3), rtf: +(genMs / 1000 / res.duration).toFixed(4),
               peak: +res.samples.reduce((m, v) => Math.max(m, Math.abs(v)), 0).toFixed(3),
+              words: res.wordTimings.length,
             });
           }
         }

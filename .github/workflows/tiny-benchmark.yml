@@ -80,18 +80,6 @@ jobs:
           npm install "$RUNNER_TEMP"/kittentts-react-native-*.tgz
           (cd node_modules/@kittentts/react-native && node scripts/patch-onnxruntime-react-native.js)
 
-      # download.onnxruntime.ai, where the onnxruntime-c pod downloads from, served a
-      # *.azureedge.net certificate (22 Nov 2026), so CocoaPods could not fetch it. This
-      # restores onnxruntime-c 1.27.0 into CocoaPods' cache from a release of this fork.
-      - name: Restore ONNX Runtime's iOS pod
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/ortpod.zip" \
-            https://github.com/dewana-sl/KittenTTS-react-native-testmu/releases/download/ort-ios-pod-1.27.0/onnxruntime-c-1.27.0-cocoapods-cache.zip
-          echo "00641d6ce5b435129f2b94fc80f4642b1babe3d8e71ad4584fdf4f783fbcb185  $RUNNER_TEMP/ortpod.zip" | shasum -a 256 -c -
-          mkdir -p ~/Library/Caches/CocoaPods
-          unzip -q -o "$RUNNER_TEMP/ortpod.zip" -d ~/Library/Caches/CocoaPods
-
       - name: Generate the iOS project
         if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 15
@@ -99,7 +87,10 @@ jobs:
         run: |
           CI=1 npx expo prebuild --platform ios --no-install
           python3 scripts/scene-fix.py .
-          perl -0pi -e "s/(\n\s*use_expo_modules!\n)/\$1  pod 'onnxruntime-c', '1.27.0'\n/" ios/Podfile
+          # download.onnxruntime.ai, where the onnxruntime-c pod downloads from, served a
+          # *.azureedge.net certificate (22 Nov 2026): take ONNX Runtime 1.27.0's pod from a
+          # release of this fork instead (scripts/onnxruntime-c.podspec.json, sha256 checked).
+          perl -0pi -e "s/(\n\s*use_expo_modules!\n)/\$1  pod 'onnxruntime-c', :podspec => '..\/scripts\/onnxruntime-c.podspec.json'\n/" ios/Podfile
           grep -n "onnxruntime-c" ios/Podfile
           cd ios && LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 pod install
 
